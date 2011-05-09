@@ -459,14 +459,6 @@ void Contest::step(double u, double step_size)
 	    }
 	}
     }
-
-    std::map<std::pair<int, int>, int> tduels;
-    duels(tduels);
-
-    if (cduels != tduels) {
-	std::cerr << "duel diff!!!!!" << std::endl;
-	exit(5);
-    }
 }
 
 double E1(void *xp)
