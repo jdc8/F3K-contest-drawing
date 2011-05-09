@@ -315,7 +315,7 @@ void Round::get_group_and_index(int p, int& pg, int& pi) const
     }
 }
 
-void Round::remove_duels(int p, int g, std::map<std::pair<int, int>, int>& cduels) const
+inline void Round::remove_duels(int p, int g, std::map<std::pair<int, int>, int>& cduels) const
 {
     for(std::vector<int>::const_iterator I = groups[g].pilots.begin(); I != groups[g].pilots.end(); I++)
 	if (*I != p) {
@@ -325,7 +325,7 @@ void Round::remove_duels(int p, int g, std::map<std::pair<int, int>, int>& cduel
 	}
 }
 
-void Round::add_duels(int p, int g, std::map<std::pair<int, int>, int>& cduels) const
+inline void Round::add_duels(int p, int g, std::map<std::pair<int, int>, int>& cduels) const
 {
     for(std::vector<int>::const_iterator I = groups[g].pilots.begin(); I != groups[g].pilots.end(); I++)
 	if (*I != p) {
