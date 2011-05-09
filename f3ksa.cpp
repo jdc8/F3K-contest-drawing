@@ -1,0 +1,545 @@
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+#include <gsl/gsl_siman.h>
+#include <vector>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <map>
+
+/* set up parameters for this simulated annealing run */
+     
+/* how many points do we try before stepping */
+#define N_TRIES 200             
+
+/* how many iterations for each T? */
+#define ITERS_FIXED_T 1000
+
+/* max step size in random walk */
+#define STEP_SIZE 100.0            
+
+/* Boltzmann constant */
+#define K 1.0                   
+
+/* initial temperature */
+#define T_INITIAL 0.008         
+
+/* damping factor for temperature */
+#define MU_T 1.003              
+#define T_MIN 2.0e-6
+
+gsl_siman_params_t params = {N_TRIES, ITERS_FIXED_T, STEP_SIZE,
+			     K, T_INITIAL, MU_T, T_MIN};
+
+inline std::pair<int,int> mangle(int p, int q)
+{
+    return p < q ? std::pair<int,int>(p, q) : std::pair<int,int>(q, p);
+}
+
+struct Group;
+struct Round;
+struct Contest;
+
+struct Group {
+    std::vector<int> pilots;
+    void draw(const Contest*, const Round*, int);
+    int in_group(int p) const;
+    void duels(std::map<std::pair<int, int>, int>& eduels) const;
+};
+
+struct Round {
+    std::vector<Group> groups;
+    void draw(const Contest*);
+    int in_round(int p) const;
+    void duels(std::map<std::pair<int, int>, int>& eduels) const;
+    void step();
+    void step0(int p, int q);
+    int stepm(int p, int q);
+    void get_group_and_index(int p, int& pg, int& pi);
+    Round() {}
+};
+
+struct Contest {
+    std::vector<Round> rounds;
+    int npilots;
+    std::vector<int> group_npilots;
+    int nrounds;
+    int max_duels;
+    void draw();
+    void add_group_npilots(int i) { group_npilots.push_back(i); }
+    void duels(std::map<std::pair<int, int>, int>& eduels) const;
+    int sum_duel_occurences(const std::map<std::pair<int, int>, int>& eduels,
+			    std::map<int, int>& ov) const;
+    double cost() const;
+    void step(double u, double step_size);
+    void report();
+    Contest() {}
+    Contest(int inpilots, int inrounds, int imax_duels) : npilots(inpilots), nrounds(inrounds), max_duels(imax_duels) {}
+};
+
+void Group::duels(std::map<std::pair<int, int>, int>& eduels) const
+{
+    for(std::vector<int>::const_iterator P = pilots.begin(); P != pilots.end(); P++) {
+	std::vector<int>::const_iterator Q = P;
+	Q++;
+	for(; Q != pilots.end(); Q++) {
+	    std::pair<int,int> k = mangle(*P, *Q);
+	    if (eduels.count(k))
+		eduels[k]++;
+	    else
+		eduels[k] = 1;
+	}
+    }
+}
+
+void Round::duels(std::map<std::pair<int, int>, int>& eduels) const
+{
+    for(std::vector<Group>::const_iterator I = groups.begin(); I != groups.end(); I++)
+	I->duels(eduels);
+}
+
+void Contest::duels(std::map<std::pair<int, int>, int>& eduels) const
+{
+//    eduels.clear();
+    for(int i = 0; i < (npilots - 1); i++)
+	for(int j = i+1; j < npilots; j++)
+	    eduels[mangle(i, j)] = 0;
+    for(std::vector<Round>::const_iterator I = rounds.begin(); I != rounds.end(); I++)
+	I->duels(eduels);
+}
+
+int Contest::sum_duel_occurences(const std::map<std::pair<int, int>, int>& eduels,
+				 std::map<int, int>& ov) const
+{
+    int mov = 0;
+    for(std::map<std::pair<int, int>, int>::const_iterator I = eduels.begin(); I != eduels.end(); I++) {
+	if (I->first.first != I->first.second) {
+	    if (ov.count(I->second))
+		ov[I->second]++;
+	    else
+		ov[I->second] = 1;
+	    if (I->second > mov)
+		mov = I->second;
+	}
+    }
+    return mov;
+}
+
+double Contest::cost() const 
+{
+    std::map<std::pair<int, int>, int> eduels;
+    duels(eduels);
+    std::map<int, int> ov;
+    int mov = sum_duel_occurences(eduels, ov);
+    double cost = 0;
+    
+//     cost = cost + mov * 10e9; // don't like many duels
+//     cost = cost - ov[mov]; // like many occurences of max number of duels
+//     if (ov.count(0))
+//  	cost = cost + ov[0] * 1000; // don't like pilots not dueling
+
+    cost = cost + mov * 10e9; // don't like many duels
+    if (mov <= max_duels) {
+	if (ov.count(0))
+	    cost += ov[0] * 10000000;
+	for(int i = 1; i <= max_duels; i++)
+	    if (ov.count(i))
+		cost -= ov[i] * (i == 2 ? 20000 : 1000);
+    }
+    else
+	cost += ov[mov] * 10000000;
+
+//     for(int i = 0; i <= mov; i++)
+// 	if (ov.count(i))
+// 	    cost += ov[i] * pow(10, 3*i);
+    
+    return cost;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const Group& c)
+{
+    os << "{";
+    int first = 1;
+    for(std::vector<int>::const_iterator I = c.pilots.begin(); I != c.pilots.end(); I++) {
+	if (!first)
+	    os << " ";
+	first = 0;
+	os << *I;
+    }
+    os << "}";
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const Round& r)
+{
+    int first = 1;
+    for(std::vector<Group>::const_iterator I = r.groups.begin(); I != r.groups.end(); I++) {
+	if (!first)
+	    os << " ";
+	first = 0;
+	os << *I;
+    }
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const Contest& c)
+{
+    for(std::vector<Round>::const_iterator I = c.rounds.begin(); I != c.rounds.end(); I++)
+	os << *I << "\n";
+    return os;
+}
+
+void Contest::report()
+{
+    std::ostringstream fos;
+    fos << "data/f3k_" << npilots << "p_" << nrounds << "r";
+    for(std::vector<int>::const_iterator I = group_npilots.begin(); I != group_npilots.end(); I++)
+	fos << "_" << *I;
+    fos << "_";
+    if (max_duels < 0)
+	fos << (-max_duels) << "random";
+    else
+	fos << max_duels << "siman";
+    fos << ".txt";
+    std::ofstream os(fos.str().c_str());
+    os << "pilots " << npilots << "\n";
+    os << "rounds " << nrounds << "\n";
+    os << "groups";
+    for(std::vector<int>::const_iterator I = group_npilots.begin(); I != group_npilots.end(); I++)
+	os << " " << *I;
+    os << "\n";
+    if (max_duels < 0)
+	os << "method random\nnumber_of_draws " << (-max_duels) << "\n";
+    else
+	os << "method simulated_annealing\nmax_duels " << max_duels << "\n";
+    int r = 1;
+    for(std::vector<Round>::const_iterator I = rounds.begin(); I != rounds.end(); I++)
+	os << "round " << r++ << " {" << *I << "}\n";
+    std::map<std::pair<int, int>, int> eduels;
+    duels(eduels);
+    std::map<int, int> ov;
+    int mov = sum_duel_occurences(eduels, ov);
+    os << "duel_frequencies";
+    for(int i = 0; i <= mov; i++)
+	if (ov.count(i))
+	    os << " " << i << ":" << ov[i];
+    os << "\n";
+    os << "matrix  -";
+    for(int p = 0; p < npilots; p++)
+	os << " " << std::setw(2) << p;
+    os << "\n";
+    for(int p = 0; p < npilots; p++) {
+	os << "matrix " << std::setw(2) << p;
+	for(int q = 0; q < npilots; q++) {
+	    std::pair<int, int> k = mangle(p, q);
+	    if (p == q)
+		os << "  -";
+	    else if (eduels.count(k))
+		os << " " << std::setw(2) << eduels.at(k);
+	    else
+		os << "  0";
+	}
+	os << "\n";
+    }
+
+}
+
+int Group::in_group(int p) const
+{
+    for(std::vector<int>::const_iterator I = pilots.begin(); I != pilots.end(); I++)
+	if (*I == p)
+	    return 1;
+    return 0;
+}
+
+int Round::in_round(int p) const
+{
+    for(std::vector<Group>::const_iterator I = groups.begin(); I != groups.end(); I++)
+	if (I->in_group(p))
+	    return 1;
+    return 0;
+}
+
+void Group::draw(const Contest* contest, const Round* round, int npilots)
+{
+    pilots.clear();
+    do {
+	int p = random() % contest->npilots;
+	if (!round->in_round(p) && !this->in_group(p))
+	    pilots.push_back(p);
+    } while (pilots.size() < npilots);
+}
+
+void Round::draw(const Contest* contest)
+{
+    groups.clear();
+    for(std::vector<int>::const_iterator I = contest->group_npilots.begin(); I != contest->group_npilots.end(); I++) {
+	Group group;
+	group.draw(contest, this, *I);
+	groups.push_back(group);
+    }
+}
+
+void Contest::draw()
+{
+    rounds.clear();
+    for(int r = 0; r < nrounds; r++) {
+	Round round;
+	round.draw(this);
+	rounds.push_back(round);
+    }
+}
+
+void Round::get_group_and_index(int p, int& pg, int& pi)
+{
+    pg = 0;
+    for(std::vector<Group>::const_iterator I = groups.begin(); I != groups.end(); I++) {
+	pi = 0;
+	for(std::vector<int>::const_iterator J = I->pilots.begin(); J != I->pilots.end(); J++) {
+	    if (*J == p)
+		return;
+	    pi++;
+	}
+	pg++;
+    }
+}
+
+void Round::step()
+{
+    int rg0 = random() % groups.size();
+    int rg1 = rg0;
+    if (groups.size() > 1) {
+	do {
+	    rg1 = random() % groups.size();
+	} while (rg0 == rg1);
+    }
+    int rp0 = random() % groups[rg0].pilots.size();
+    int rp1 = random() % groups[rg1].pilots.size();
+    int p = groups[rg0].pilots[rp0];
+    groups[rg0].pilots[rp0] = groups[rg1].pilots[rp1];
+    groups[rg1].pilots[rp1] = p;
+}
+
+void Round::step0(int p, int q)
+{
+    int pg = 0;
+    int pi = 0;
+    get_group_and_index(p, pg, pi);
+    int qg = 0;
+    int qi = 0;
+    get_group_and_index(q, qg, qi);
+    int r = 0;
+    do {
+	r = random() % groups[pg].pilots.size();
+    } while (r == pi);
+    int tmp = groups[pg].pilots[r];
+    groups[pg].pilots[r] = groups[qg].pilots[qi];
+    groups[qg].pilots[qi] = tmp;
+}
+
+int Round::stepm(int p, int q)
+{
+    int pg = 0;
+    int pi = 0;
+    get_group_and_index(random() % 2 ? p : q, pg, pi);
+    int qg = 0;
+    int qi = 0;
+    get_group_and_index(q, qg, qi);
+    if (pg != qg)
+	return 0;
+    int rg = 0;
+    do {
+	rg = random() % groups.size();
+    } while (rg == pg);
+    
+    int ri = random() % groups[rg].pilots.size();
+    int tmp = groups[pg].pilots[pi];
+    groups[pg].pilots[pi] = groups[rg].pilots[ri];
+    groups[rg].pilots[ri] = tmp;
+    return 1;
+}
+
+void Contest::step(double u, double step_size)
+{
+    std::map<std::pair<int, int>, int> eduels;
+    duels(eduels);
+    std::map<int, int> ov;
+    int mov = sum_duel_occurences(eduels, ov);
+    if (mov >= max_duels) {
+ 	for(int i = 0; i < (u*100); i++) {
+ 	    int rr = random() % nrounds;
+ 	    rounds[rr].step();
+ 	}
+    }
+    else {
+	if (ov.count(0)) {
+	    std::vector<std::pair<int, int> > eduels0;
+	    for(std::map<std::pair<int, int>, int>::const_iterator I = eduels.begin(); I != eduels.end(); I++)
+		if (I->second == 0)
+		    eduels0.push_back(I->first);
+	    int i = 0;
+	    for(; i < (u * 10) && eduels0.size(); i++) {
+		int rr = random() % nrounds;
+		int r0 = random() % eduels0.size();
+		rounds[rr].step0(eduels0[r0].first, eduels0[r0].second);
+		eduels0.erase(eduels0.begin()+r0);
+	    }
+	    for(; i < (u * 10) && eduels0.size(); i++) {
+		int rr = random() % nrounds;
+		rounds[rr].step();
+	    }
+ 	}
+	else {
+	    std::vector<std::pair<int, int> > eduelsm;
+	    for(std::map<std::pair<int, int>, int>::const_iterator I = eduels.begin(); I != eduels.end(); I++)
+		if (I->second == mov)
+		    eduelsm.push_back(I->first);
+	    int i = 0;
+	    for(; i < (u * 10) && eduelsm.size(); i++) {
+		int rr = 0;
+		int r0 = 0;
+		do {
+		    rr = random() % nrounds;
+		    r0 = random() % eduelsm.size();
+		} while(!rounds[rr].stepm(eduelsm[r0].first, eduelsm[r0].second));
+		eduelsm.erase(eduelsm.begin()+r0);
+	    }
+	    for(; i < (u * 10); i++) {
+		int rr = random() % nrounds;
+		rounds[rr].step();
+	    }
+	}
+    }
+}
+
+double E1(void *xp)
+{
+    return ((Contest*)xp)->cost();
+}
+     
+double M1(void *xp, void *yp)
+{
+    double x = ((Contest *) xp)->cost();
+    double y = ((Contest *) yp)->cost();
+    
+    return fabs(x - y);
+}
+     
+void S1(const gsl_rng * r, void *xp, double step_size)
+{
+    double u = gsl_rng_uniform(r);
+    ((Contest *) xp)->step(u, step_size);
+}
+
+void P1(void *xp)
+{
+    Contest* c = (Contest*)xp;
+    std::map<std::pair<int, int>, int> eduels;
+    c->duels(eduels);
+    std::map<int, int> ov;
+    int mov = c->sum_duel_occurences(eduels, ov);
+    std::cout << "#" << c->cost();
+    for(int i = 0; i <= mov; i++)
+	if (ov.count(i))
+	    std::cout << "," << i << ":" << ov[i];
+//    std::cout << "\n" << *c << std::endl;
+}
+
+void C1(void *source, void *dest)
+{
+    *((Contest*) dest) = *((Contest*) source);
+}
+
+void* CC1(void *xp)
+{
+    Contest* c = new Contest();
+    *c = *((Contest*) xp);
+    return c;
+}
+
+void D1(void *xp)
+{
+    delete ((Contest*) xp);
+}
+
+int main(int argc, char *argv[])
+{
+    srandom(getpid());
+
+    if (argc < 5) {
+	std::cerr << "usage: f3k #pilots #rounds #max_duels #pilots_in_group1 ..." << std::endl;
+	return 1;
+    }
+
+    int do_sa = 1;
+
+    int pilots = 0;
+    std::istringstream is1(argv[1]);
+    is1 >> pilots;
+
+    int rounds = 0;
+    std::istringstream is2(argv[2]);
+    is2 >> rounds;
+
+    int max_duels = 0;
+    std::istringstream is3(argv[3]);
+    is3 >> max_duels;
+    
+    std::vector<int> groups;
+    int tpilots = 0;
+    for(int i = 4; i < argc; i++) {
+	int t = 0;
+	std::istringstream is3(argv[i]);
+	is3 >> t;
+	groups.push_back(t);
+	tpilots += t;
+    }
+
+    if (pilots != tpilots) {
+	std::cerr << "Number of pilots not equal to sum of number of pilots per group" << std::endl;
+	return 1;
+    }
+
+    Contest contest(pilots, rounds, max_duels);
+    for(std::vector<int>::const_iterator I = groups.begin(); I != groups.end(); I++)
+	contest.add_group_npilots(*I);
+    contest.draw();
+
+    if (groups.size() > 1) {
+	if (max_duels < 0) {
+	    double cost = contest.cost();
+	    Contest ccontest = contest;
+	    std::cout << std::setw(10) << (-max_duels) << " " << cost << std::endl;
+	    while(max_duels < 0) {
+		ccontest.draw();
+		double ccost = ccontest.cost();
+		if (ccost < cost) {
+		    contest = ccontest;
+		    cost = ccost;
+		    std::cout << std::setw(10) << (-max_duels) << " " << cost << std::endl;
+		}
+		max_duels++;
+	    }
+	}
+	else {
+	    const gsl_rng_type * T;
+	    gsl_rng * r;
+     
+	    gsl_rng_env_setup();
+     
+	    T = gsl_rng_default;
+	    r = gsl_rng_alloc(T);
+     
+	    gsl_siman_solve(r, &contest, E1, S1, M1, P1, C1, CC1, D1, 
+			    sizeof(double), params);
+    
+	    gsl_rng_free (r);
+	}
+    }
+    
+    contest.report();
+
+    return 0;
+}
