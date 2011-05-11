@@ -28,7 +28,8 @@
 
 /* damping factor for temperature */
 #define MU_T 1.003              
-#define T_MIN 2.0e-6
+#define T_MIN 1.0e-5
+//#define T_MIN 2.0e-6
 
 gsl_siman_params_t params = {N_TRIES, ITERS_FIXED_T, STEP_SIZE,
 			     K, T_INITIAL, MU_T, T_MIN};
@@ -78,8 +79,11 @@ struct Contest {
     double cost() const;
     void step(double u, double step_size);
     void report();
+    void init_duels();
     Contest() {}
-    Contest(int inpilots, int inrounds, int imax_duels) : npilots(inpilots), nrounds(inrounds), max_duels(imax_duels) {}
+    Contest(int inpilots, int inrounds, int imax_duels) : npilots(inpilots), nrounds(inrounds), max_duels(imax_duels) {
+	init_duels();
+    }
 };
 
 void Group::duels(std::map<std::pair<int, int>, int>& eduels) const
@@ -144,13 +148,13 @@ double Contest::cost() const
     cost = cost + mov * 10e9; // don't like many duels
     if (mov <= max_duels) {
 	if (ov.count(0))
-	    cost += ov[0] * 10000000;
+	    cost += ov[0] * 10000000; // Try again with 10e6
 	for(int i = 1; i <= max_duels; i++)
 	    if (ov.count(i))
 		cost -= ov[i] * (i == 2 ? 20000 : 1000);
     }
     else
-	cost += ov[mov] * 10000000;
+	cost += ov[mov] * 10000000; // Try again with 10e6
 
 //     for(int i = 0; i <= mov; i++)
 // 	if (ov.count(i))
@@ -268,13 +272,8 @@ void Group::draw(const Contest* contest, const Round* round, int npilots, std::m
     do {
 	int p = random() % contest->npilots;
 	if (!round->in_round(p) && !this->in_group(p)) {
-	    for(std::vector<int>::const_iterator I = pilots.begin(); I != pilots.end(); I++) {
-		std::pair<int,int> k = mangle(p, *I);
-		if (cduels.count(k))
-		    cduels[k]++;
-		else
-		    cduels[k] = 1;
-	    }
+	    for(std::vector<int>::const_iterator I = pilots.begin(); I != pilots.end(); I++)
+		cduels[mangle(p, *I)]++;
 	    pilots.push_back(p);
 	}
     } while (pilots.size() < npilots);
@@ -290,10 +289,18 @@ void Round::draw(const Contest* contest, std::map<std::pair<int, int>, int>& cdu
     }
 }
 
+void Contest::init_duels()
+{
+    cduels.clear();
+    for(int i = 0; i < (npilots - 1); i++)
+	for(int j = i+1; j < npilots; j++)
+	    cduels[mangle(i, j)] = 0;
+}
+
 void Contest::draw()
 {
     rounds.clear();
-    cduels.clear();
+    init_duels();
     for(int r = 0; r < nrounds; r++) {
 	Round round;
 	round.draw(this, cduels);
@@ -318,23 +325,15 @@ void Round::get_group_and_index(int p, int& pg, int& pi) const
 inline void Round::remove_duels(int p, int g, std::map<std::pair<int, int>, int>& cduels) const
 {
     for(std::vector<int>::const_iterator I = groups[g].pilots.begin(); I != groups[g].pilots.end(); I++)
-	if (*I != p) {
-	    std::pair<int,int> k = mangle(*I, p);
-	    if (cduels.count(k))
-		cduels[k]--;
-	}
+	if (*I != p)
+	    cduels[mangle(*I, p)]--;
 }
 
 inline void Round::add_duels(int p, int g, std::map<std::pair<int, int>, int>& cduels) const
 {
     for(std::vector<int>::const_iterator I = groups[g].pilots.begin(); I != groups[g].pilots.end(); I++)
-	if (*I != p) {
-	    std::pair<int,int> k = mangle(*I, p);
-	    if (cduels.count(k))
-		cduels[k]++;
-	    else
-		cduels[k] = 1;
-	}
+	if (*I != p)
+	    cduels[mangle(*I, p)]++;
 }
 
 void Round::step(std::map<std::pair<int, int>, int>& cduels)

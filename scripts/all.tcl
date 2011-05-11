@@ -49,17 +49,33 @@ proc groups {p} {
     }
 }
 
-set mp 5
-set Mp 50
-set mr 5
-set Mr 20
+set mp 5  ;# Minimum number of pilots
+set Mp 50 ;# Maximum number of pilots
+set mr 5  ;# Minimum number of tasks
+set Mr 20 ;# Maximum number of tasks
+set generate_script 0
 set incremental 1
+set generate_html 0
+
+foreach a $argv {
+    switch -glob -- $a {
+	h* -
+	-h* {
+	    set generate_html 1
+	}
+	s* -
+	-s* {
+	    set generate_script 1
+	}
+    }
+}
 
 set methods {
-    10000random "Best of 10000 random draws" "Rnd4"
-    1siman "Minimized frequency of maximum number of duels" "Min"
-    3siman "Maximized frequency of 3 duels, minimized frequency of 0 duels" "Max3"
-    4siman "Maximized frequency of 4 duels, minimized frequency of 0 duels" "Max4"
+    -10000   10000random   "Best of 10000 random draws"                                     "Rnd4"
+    -1000000 1000000random "Best of 1000000 random draws"                                   "Rnd6"
+    1        1siman        "Minimized frequency of maximum number of duels"                 "Min"
+    3        3siman        "Maximized frequency of 3 duels, minimized frequency of 0 duels" "Max3"
+    4        4siman        "Maximized frequency of 4 duels, minimized frequency of 0 duels" "Max4"
 }
 
 proc add_contest {h fnm} {
@@ -158,7 +174,7 @@ proc htmlheader {h} {
     puts $h "</head>"
     puts $h "<body>"
     puts $h "<h1><a id='home'>F3k Contests</a></h1>"
-    puts $h "<a href='index.html'>Home</a>"
+    puts $h "<a href='index.html'>Pilots/Rounds table</a>"
 }
 
 proc htmlfooter {h} {
@@ -166,10 +182,49 @@ proc htmlfooter {h} {
     close $h
 }
 
+proc cost { dmnm mti } {
+    upvar $dmnm dm
+    set m -1
+    foreach {k v} [array get dm "$mti,*"] {
+	lassign [split $k ,] t d
+	if {$d > $m} {
+	    set m $d
+	}
+    }
+    if {$m < 0} {
+	return 10e20
+    } else {
+	set c [expr {$m * 10e9}]
+	switch -exact -- $mti {
+	    3siman -
+	    4siman {
+		switch -exact -- $mti {
+		    3siman { set max_duels 3 }
+		    4siman { set max_duels 4 }
+		}
+		if {$m <= $max_duels} {
+		    if {[info exists dm($mti,0)]} {
+			set c [expr {$c + $dm($mti,0) * 10e6}]
+		    }
+		    for {set i 1} {$i <= $max_duels} {incr i} {
+			if {[info exists dm($mti,$i)]} {
+			    set c [expr {$c - $dm($mti,$i) * ($i == 2 ? 20000 : 1000)}]
+			}
+		    }
+		}
+	    }
+	    default {
+		set c [expr {$c + $dm($mti,$m) * 10e6}]
+	    }
+	}
+    }
+    return $c
+}
+
 proc collect_duel_frequencies { fnm methods dmnm } {
     upvar $dmnm dm
     unset -nocomplain dm
-    foreach {mti mtl mtlabb} $methods {
+    foreach {marg mti mtl mtlabb} $methods {
 	set tfnm ../data/${fnm}_$mti.txt
 	if {![file exists $tfnm]} {
 	    continue
@@ -192,126 +247,145 @@ proc collect_duel_frequencies { fnm methods dmnm } {
     return [lsort -integer [array names ddm]]
 }
 
-set ntot 0
-set nfound 0
+if {$generate_html} {
 
-set h [open ../html/index.html w]
-htmlheader $h
-puts $h "<table border='1'><caption>Optimization methods</caption>"
-foreach {mti mtl mtlabb} $methods {
-    puts $h "<tr><td>$mtlabb</td><td>$mtl</td></tr>"
-}
+    set ntot 0
+    set nfound 0
 
-set nh 0
-puts $h "</table>"
-puts $h "<br><br>"
-puts $h "<table border='1'><caption>Pilots/rounds table</caption>"
-for {set p $mp} {$p <= $Mp} {incr p} {
-    set first_group 1
+    set h [open ../html/index.html w]
+    htmlheader $h
+    puts $h "<table border='1'><caption>Optimization methods</caption>"
+    foreach {marg mti mtl mtlabb} $methods {
+	puts $h "<tr><td>$mtlabb</td><td>$mtl</td></tr>"
+    }
+
+    set nh 0
+    puts $h "</table>"
+    puts $h "<br><br>"
+    puts $h "<table border='1'><caption>Pilots/rounds table</caption>"
+    for {set p $mp} {$p <= $Mp} {incr p} {
+	set first_group 1
 	
-    if {$nh % 10 == 0} {
-	if {$nh == 0} {
-	    puts $h "<tr><th colspan='2'></th><th colspan='[expr {$Mr-$mr+1}]'>Rounds</th></tr>"
-	}
-	puts -nonewline $h "<tr><th>Pilots</th><th>Groups</th>"
-	for {set r $mr} {$r <= $Mr} {incr r} {
-	    puts -nonewline $h "<th>$r</th>"
-	}
-	puts $h "</tr>"
-    }
-
-    incr nh
-
-    foreach gl [groups $p] {
-
-	puts $h "<tr>"
-	if {$first_group} {
-	    puts $h "<td rowspan='[llength [groups $p]]'>$p</td>"
-	    set first_group 0
-	}
-	puts $h "<td>[llength $gl] ([join $gl ,\ ])</td>"
-	for {set r $mr} {$r <= $Mr} {incr r} {
-	    puts $h "<td>"
-	    set al {}
-	    foreach {mti mtl mtlabb} $methods {
-		incr ntot
-		set fnm "f3k_${p}p_${r}r_[join $gl _]_$mti.txt"
-		if {[file exists ../data/$fnm]} {
-		    incr nfound
-		    lappend al "<a href='p${p}g[join $gl -]r${r}.html#id$mti'>$mtlabb</a>"
-		} else {
-		    lappend al "$mtlabb"
-		}
+	if {$nh % 5 == 0} {
+	    if {$nh == 0} {
+		puts $h "<tr><th colspan='2'></th><th colspan='[expr {$Mr-$mr+1}]'>Rounds</th></tr>"
 	    }
-	    puts $h [join $al "<br>"]
-	    puts $h "</td>"
-	}
-	puts $h "</tr>"
-    }
-}
-puts $h "</table>"
-htmlfooter $h
-
-for {set p $mp} {$p <= $Mp} {incr p} {
-    foreach gl [groups $p] {
-	for {set r $mr} {$r <= $Mr} {incr r} {
-	    set h [open ../html/p${p}g[join $gl -]r${r}.html w]
-	    htmlheader $h
-	    set fnm "f3k_${p}p_${r}r_[join $gl _]"
-	    puts $h "<h2>Method used to optimize a contest of $r tasks for $p pilots flying in [llength $gl] [wgroups [llength $gl]] ([join $gl ,\ ])</h2>"
-	    set ndl [collect_duel_frequencies $fnm $methods dm]
-	    puts $h "<table border='1'><caption>Duel frequencies overview</caption>"
-	    puts -nonewline $h "<tr><th></th>"
-	    foreach nd $ndl {
-		puts -nonewline $h "<th class='w3'>$nd</th>"
+	    puts -nonewline $h "<tr><th>Pilots</th><th>Groups</th>"
+	    for {set r $mr} {$r <= $Mr} {incr r} {
+		puts -nonewline $h "<th>$r</th>"
 	    }
 	    puts $h "</tr>"
-	    foreach {mti mtl mtlabb} $methods {
-		puts -nonewline $h "<tr><td><a href='#id$mti'>$mtl</a></td>"
-		foreach nd $ndl {
-		    if {[info exists dm($mti,$nd)]} {
-			puts -nonewline $h "<td class='w3'>$dm($mti,$nd)</td>"
+	}
+
+	incr nh
+
+	foreach gl [groups $p] {
+
+	    puts $h "<tr>"
+	    if {$first_group} {
+		puts $h "<td rowspan='[llength [groups $p]]'>$p</td>"
+		set first_group 0
+	    }
+	    puts $h "<td>[llength $gl] ([join $gl ,\ ])</td>"
+	    for {set r $mr} {$r <= $Mr} {incr r} {
+		puts $h "<td>"
+		set al {}
+		set fnm "f3k_${p}p_${r}r_[join $gl _]"
+		unset -nocomplain dm
+		set cost [list]
+		set ndl [collect_duel_frequencies $fnm $methods dm]
+		foreach {marg mti mtl mtlabb} $methods {
+		    set c [cost dm $mti]
+		    lappend cost [list $mti $c]
+		    set dcost($fnm,$mti) $c
+		}
+		set cost [lsort -increasing -index 1 -real $cost]
+		foreach {marg mti mtl mtlabb} $methods {
+		    incr ntot
+		    set fnm "f3k_${p}p_${r}r_[join $gl _]_$mti.txt"
+		    if {[file exists ../data/$fnm]} {
+			incr nfound
+			lappend al "<a href='p${p}g[join $gl -]r${r}.html#id$mti'>$mtlabb ([lsearch -index 0 $cost $mti])</a>"
 		    } else {
-			puts -nonewline $h "<td class='w3'>-</td>"
+			lappend al "$mtlabb"
 		    }
-		}		
-		puts $h "</tr>"
+		}
+		puts $h [join $al "<br>"]
+		puts $h "</td>"
 	    }
-	    puts $h "</table>"
-	    foreach {mti mtl mtlabb} $methods {
-		puts $h "<h3><a id='id$mti'>$mtl</a></h3>"
-		add_contest $h ${fnm}_$mti.txt
-	    }
-	    htmlfooter $h
-	}    
+	    puts $h "</tr>"
+	}
     }
+    puts $h "</table>"
+    htmlfooter $h
+
+    for {set p $mp} {$p <= $Mp} {incr p} {
+	foreach gl [groups $p] {
+	    for {set r $mr} {$r <= $Mr} {incr r} {
+		set h [open ../html/p${p}g[join $gl -]r${r}.html w]
+		htmlheader $h
+		set fnm "f3k_${p}p_${r}r_[join $gl _]"
+		puts $h "<h2>Method used to optimize a contest of $r tasks for $p pilots flying in [llength $gl] [wgroups [llength $gl]] ([join $gl ,\ ])</h2>"
+		set ndl [collect_duel_frequencies $fnm $methods dm]
+		puts $h "<table border='1'><caption>Duel frequencies overview</caption>"
+		puts -nonewline $h "<tr><th></th>"
+		foreach nd $ndl {
+		    puts -nonewline $h "<th class='w3'>$nd</th>"
+		}
+		puts $h "<th>Cost</th></tr>"
+		foreach {marg mti mtl mtlabb} $methods {
+		    puts -nonewline $h "<tr><td><a href='#id$mti'>$mtl</a></td>"
+		    foreach nd $ndl {
+			if {[info exists dm($mti,$nd)]} {
+			    puts -nonewline $h "<td class='w3'>$dm($mti,$nd)</td>"
+			} else {
+			    puts -nonewline $h "<td class='w3'>-</td>"
+			}
+		    }		
+		    if {[info exists dcost($fnm,$mti)]} {
+			puts $h "<td>$dcost($fnm,$mti)</td></tr>"
+		    } else {
+			puts $h "<td>-</td></tr>"
+		    }
+		}
+		puts $h "</table>"
+		foreach {marg mti mtl mtlabb} $methods {
+		    puts $h "<h3><a id='id$mti'>$mtl</a></h3>"
+		    add_contest $h ${fnm}_$mti.txt
+		}
+		htmlfooter $h
+	    }    
+	}
+    }
+
+    puts "Processed $nfound of $ntot ([format %5.1f [expr {$nfound * 100.0 / $ntot}]]%), HTML written to directory ../data"
 }
 
-set f [open all.sh w]
-puts $f "#/bin/sh"
-for {set p $mp} {$p <= $Mp} {incr p} {
-    for {set r $mr} {$r <= $Mr} {incr r} {
-	foreach gl [groups $p] {
-	    if {$p != [expr [join $gl +]]} {
-		error "$p != [join $gl +]"
-	    }
-	    set fnm "../data/f3k_${p}p_${r}r_[join $gl _]"
-	    if {!$incremental || ![file exists "${fnm}_1siman.txt"]} {
-		puts $f "./f3ksa $p $r 1 [join $gl]"
-	    }
-	    if {!$incremental || ![file exists "${fnm}_3siman.txt"]} {
-		puts $f "./f3ksa $p $r 3 [join $gl]"
-	    }
-	    if {!$incremental || ![file exists "${fnm}_4siman.txt"]} {
-		puts $f "./f3ksa $p $r 4 [join $gl]"
-	    }
-	    if {!$incremental || ![file exists "${fnm}_10000random.txt"]} {
-		puts $f "./f3ksa $p $r -10000 [join $gl]"
+if {$generate_script} {
+
+    set ntot 0
+    set nmiss 0
+
+    set f [open all.sh w]
+    puts $f "#/bin/sh"
+    for {set p $mp} {$p <= $Mp} {incr p} {
+	for {set r $mr} {$r <= $Mr} {incr r} {
+	    foreach gl [groups $p] {
+		if {$p != [expr [join $gl +]]} {
+		    error "$p != [join $gl +]"
+		}
+		set fnm "../data/f3k_${p}p_${r}r_[join $gl _]"
+		foreach {marg mti mtl mtlabb} $methods {
+		    incr ntot
+		    if {!$incremental || ![file exists "${fnm}_$mti.txt"]} {
+			incr nmiss
+			puts $f "./f3ksa $p $r $marg [join $gl]"
+		    }
+		}
 	    }
 	}
     }
+    close $f
+
+    puts "Missing $nmiss of $ntot ([format %5.1f [expr {$nmiss * 100.0 / $ntot}]]%), commands written to 'all.sh'"
 }
-
-close $f
-
-puts "Processed $nfound of $ntot ([format %5.1f [expr {$nfound * 100.0 / $ntot}]]%)"
