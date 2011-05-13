@@ -553,6 +553,7 @@ int main(int argc, char *argv[])
 
     if (groups.size() > 1) {
 	if (max_duels < 0) {
+	    max_duels++;
 	    double cost = contest.cost();
 	    Contest ccontest = contest;
 	    std::cout << std::setw(10) << (-max_duels) << " " << cost << std::endl;

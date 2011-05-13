@@ -71,11 +71,13 @@ foreach a $argv {
 }
 
 set methods {
-    -10000   10000random   "Best of 10000 random draws"                                     "Rnd4"
-    -1000000 1000000random "Best of 1000000 random draws"                                   "Rnd6"
-    1        1siman        "Minimized frequency of maximum number of duels"                 "Min"
-    3        3siman        "Maximized frequency of 3 duels, minimized frequency of 0 duels" "Max3"
-    4        4siman        "Maximized frequency of 4 duels, minimized frequency of 0 duels" "Max4"
+    -1       1random       "1 random draw"                                                                               "Rnd0"
+    -10      10random      "Best of 10 random draws"                                                                     "Rnd1"
+    -10000   10000random   "Best of 10000 random draws"                                                                  "Rnd4"
+    -1000000 1000000random "Best of 1000000 random draws"                                                                "Rnd6"
+    1        1siman        "Minimized frequency of maximum number of duels using simulated annealing"                    "Min"
+    3        3siman        "Maximized frequency of 3 duels and minimized frequency of 0 duels using simulated annealing" "Max3"
+    4        4siman        "Maximized frequency of 4 duels and minimized frequency of 0 duels using simulated annealing" "Max4"
 }
 
 proc add_contest {h fnm} {
@@ -161,7 +163,7 @@ proc wgroups {n} {
     }
 }
 
-proc htmlheader {h} {
+proc htmlheader {h {top 0}} {
     puts $h "<html>"
     puts $h "<head>"
     puts $h "<style type='text/css'>"
@@ -174,10 +176,50 @@ proc htmlheader {h} {
     puts $h "</head>"
     puts $h "<body>"
     puts $h "<h1><a id='home'>F3k Contests</a></h1>"
-    puts $h "<a href='index.html'>Pilots/Rounds table</a>"
+    if {$top} {
+	puts $h "<p>"
+	puts $h "This page tries to list a number of ways to arrange the groups in a F3K contest. Different methods are used to find a solution to this problem. The aim was to minimize the number of times 2 pilots fly in the same group during a contest. No other constraint have been taken into account (e.g. frequency clashes, teams, flying rounds back-to-back, ...)."
+	puts $h "</p>"
+	puts $h "<p>"
+	puts $h "For questions and feedback about the data and the method used to obtain this data, you can contact me at <a href=\"mailto:jos.decoster@gmail.com\">jos.decoster@gmail.com</a>."
+	puts $h "</p>"
+	puts $h "<p>"
+	puts $h "The data is provided with a BSD style <a href='#license'>license</a>."
+	puts $h "</p>"
+    } else {
+	puts $h "<a href='index.html'>Pilots/Rounds table</a>"
+    }
 }
 
-proc htmlfooter {h} {
+proc htmlfooter {h {top 0}} {
+    if {$top} {
+	puts $h "<h2 id='license'>License</h2>"
+	puts $h "<pre>
+##
+## This data is copyrighted by Jos Decoster (jos.decoster@gmail.com>.
+## The  following terms apply to all files associated with the 
+## data unless explicitly disclaimed in individual files.
+##
+## The authors hereby grant permission to use, copy, modify, distribute, and
+## license this data and its documentation for any purpose, provided that
+## existing copyright notices are retained in all copies and that this notice
+## is included verbatim in any distributions.  No written agreement, license,
+## or royalty fee is required for any of the authorized uses.
+##
+## IN NO EVENT SHALL THE AUTHORS OR DISTRIBUTORS BE LIABLE TO ANY PARTY FOR
+## DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES ARISING OUT
+## OF THE USE OF THIS DATA, ITS DOCUMENTATION, OR ANY DERIVATIVES THEREOF,
+## EVEN IF THE AUTHORS HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+##
+## THE AUTHORS AND DISTRIBUTORS SPECIFICALLY DISCLAIM ANY WARRANTIES,
+## INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY,
+## FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.  THIS DATA IS
+## PROVIDED ON AN \"AS IS\" BASIS, AND THE AUTHORS AND DISTRIBUTORS HAVE NO
+## OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR
+## MODIFICATIONS.
+##
+</pre>"
+    }
     puts $h "</body></html>"
     close $h
 }
@@ -253,7 +295,7 @@ if {$generate_html} {
     set nfound 0
 
     set h [open ../html/index.html w]
-    htmlheader $h
+    htmlheader $h 1
     puts $h "<table border='1'><caption>Optimization methods</caption>"
     foreach {marg mti mtl mtlabb} $methods {
 	puts $h "<tr><td>$mtlabb</td><td>$mtl</td></tr>"
@@ -305,7 +347,7 @@ if {$generate_html} {
 		    set fnm "f3k_${p}p_${r}r_[join $gl _]_$mti.txt"
 		    if {[file exists ../data/$fnm]} {
 			incr nfound
-			lappend al "<a href='p${p}g[join $gl -]r${r}.html#id$mti'>$mtlabb ([lsearch -index 0 $cost $mti])</a>"
+			lappend al "<a href='p${p}g[join $gl -]r${r}.html'>$mtlabb ([lsearch -index 0 $cost $mti])</a>"
 		    } else {
 			lappend al "$mtlabb"
 		    }
@@ -317,7 +359,7 @@ if {$generate_html} {
 	}
     }
     puts $h "</table>"
-    htmlfooter $h
+    htmlfooter $h 1
 
     for {set p $mp} {$p <= $Mp} {incr p} {
 	foreach gl [groups $p] {
@@ -358,7 +400,7 @@ if {$generate_html} {
 	}
     }
 
-    puts "Processed $nfound of $ntot ([format %5.1f [expr {$nfound * 100.0 / $ntot}]]%), HTML written to directory ../data"
+    puts "Processed $nfound of $ntot ([format %5.1f [expr {$nfound * 100.0 / $ntot}]]%), HTML written to directory ../html"
 }
 
 if {$generate_script} {
