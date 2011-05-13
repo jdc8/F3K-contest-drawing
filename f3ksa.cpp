@@ -53,6 +53,7 @@ struct Group {
 struct Round {
     std::vector<Group> groups;
     void draw(const Contest*, std::map<std::pair<int, int>, int>&);
+    void worst_case(const Contest*);
     int in_round(int p) const;
     void duels(std::map<std::pair<int, int>, int>& eduels) const;
     void remove_duels(int, int, std::map<std::pair<int, int>, int>& eduels) const;
@@ -72,6 +73,7 @@ struct Contest {
     int nrounds;
     int max_duels;
     void draw();
+    void worst_case();
     void add_group_npilots(int i) { group_npilots.push_back(i); }
     void duels(std::map<std::pair<int, int>, int>& eduels) const;
     int sum_duel_occurences(const std::map<std::pair<int, int>, int>& eduels,
@@ -203,7 +205,9 @@ void Contest::report()
     for(std::vector<int>::const_iterator I = group_npilots.begin(); I != group_npilots.end(); I++)
 	fos << "_" << *I;
     fos << "_";
-    if (max_duels < 0)
+    if (max_duels == 0)
+	fos << "worstcase";
+    else if (max_duels < 0)
 	fos << (-max_duels) << "random";
     else
 	fos << max_duels << "siman";
@@ -289,12 +293,36 @@ void Round::draw(const Contest* contest, std::map<std::pair<int, int>, int>& cdu
     }
 }
 
+void Round::worst_case(const Contest* contest)
+{
+    groups.clear();
+    int p = 0;
+    for(std::vector<int>::const_iterator I = contest->group_npilots.begin(); I != contest->group_npilots.end(); I++) {
+	Group group;
+	for(int i = 0; i < *I; i++)
+	    group.pilots.push_back(p++);
+	groups.push_back(group);
+    }
+}
+
 void Contest::init_duels()
 {
     cduels.clear();
     for(int i = 0; i < (npilots - 1); i++)
 	for(int j = i+1; j < npilots; j++)
 	    cduels[mangle(i, j)] = 0;
+}
+
+void Contest::worst_case()
+{
+    rounds.clear();
+    init_duels();
+    for(int r = 0; r < nrounds; r++) {
+	Round round;
+	round.worst_case(this);
+	rounds.push_back(round);
+    }
+    duels(cduels);
 }
 
 void Contest::draw()
@@ -549,10 +577,13 @@ int main(int argc, char *argv[])
     Contest contest(pilots, rounds, max_duels);
     for(std::vector<int>::const_iterator I = groups.begin(); I != groups.end(); I++)
 	contest.add_group_npilots(*I);
-    contest.draw();
 
     if (groups.size() > 1) {
-	if (max_duels < 0) {
+	if (max_duels == 0) {
+	    contest.worst_case();
+	}
+	else if (max_duels < 0) {
+	    contest.draw();
 	    max_duels++;
 	    double cost = contest.cost();
 	    Contest ccontest = contest;
@@ -569,6 +600,9 @@ int main(int argc, char *argv[])
 	    }
 	}
 	else {
+	    // Get a contest to start from
+	    contest.draw();
+	    
 	    const gsl_rng_type * T;
 	    gsl_rng * r;
      

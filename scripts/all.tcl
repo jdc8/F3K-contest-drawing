@@ -56,12 +56,17 @@ set Mr 20 ;# Maximum number of tasks
 set generate_script 0
 set incremental 1
 set generate_html 0
+set generate_duel_matrix 0
 
 foreach a $argv {
     switch -glob -- $a {
 	h* -
 	-h* {
 	    set generate_html 1
+	}
+	m* -
+	-m* {
+	    set generate_duel_matrix 1
 	}
 	s* -
 	-s* {
@@ -71,6 +76,7 @@ foreach a $argv {
 }
 
 set methods {
+    0        worstcase     "Worst case"                                                                                  "Wrst"
     -1       1random       "1 random draw"                                                                               "Rnd0"
     -10      10random      "Best of 10 random draws"                                                                     "Rnd1"
     -10000   10000random   "Best of 10000 random draws"                                                                  "Rnd4"
@@ -127,32 +133,34 @@ proc add_contest {h fnm} {
 	lassign [split $df :] nduels freq
 	lappend ndl $nduels
     }
-    puts $h "<br>"
-    puts $h "<table border='1'><caption>Duel matrix</caption>"
-    set mi 1
-    puts -nonewline $h "<tr><th class='w2'></th>"
-    for {set i 1} {$i <= $npilots} {incr i} {
-	puts -nonewline $h "<th class='w2'>$i</th>"
-    }
-    puts $h "</tr>"
-    set i 1
-    set Md [lindex [lsort -integer $ndl] end]
-    foreach m [lrange $ml 1 end] {
-	puts -nonewline $h "<tr>"
-	puts -nonewline $h "<th class='w2'>$i</th>"
-	foreach j [lrange $m 2 end] {
-	    if {$j == $Md} {
-		puts -nonewline $h "<td class='w2max'>$j</td>"
-	    } elseif {$j == 0} {
-		puts -nonewline $h "<td class='w2min' bgcolor='#00FF00'>$j</td>"
-	    } else {
-		puts -nonewline $h "<td class='w2'>$j</td>"
-	    }
+    if {$::generate_duel_matrix} {
+	puts $h "<br>"
+	puts $h "<table border='1'><caption>Duel matrix</caption>"
+	set mi 1
+	puts -nonewline $h "<tr><th class='w2'></th>"
+	for {set i 1} {$i <= $npilots} {incr i} {
+	    puts -nonewline $h "<th class='w2'>$i</th>"
 	}
 	puts $h "</tr>"
-	incr i
+	set i 1
+	set Md [lindex [lsort -integer $ndl] end]
+	foreach m [lrange $ml 1 end] {
+	    puts -nonewline $h "<tr>"
+	    puts -nonewline $h "<th class='w2'>$i</th>"
+	    foreach j [lrange $m 2 end] {
+		if {$j == $Md} {
+		    puts -nonewline $h "<td class='w2max'>$j</td>"
+		} elseif {$j == 0} {
+		    puts -nonewline $h "<td class='w2min' bgcolor='#00FF00'>$j</td>"
+		} else {
+		    puts -nonewline $h "<td class='w2'>$j</td>"
+		}
+	    }
+	    puts $h "</tr>"
+	    incr i
+	}
+	puts $h "</table>"
     }
-    puts $h "</table>"
 }
 
 proc wgroups {n} {
@@ -163,7 +171,7 @@ proc wgroups {n} {
     }
 }
 
-proc htmlheader {h {top 0}} {
+proc htmlheader {h pilots} {
     puts $h "<html>"
     puts $h "<head>"
     puts $h "<style type='text/css'>"
@@ -175,10 +183,14 @@ proc htmlheader {h {top 0}} {
     puts $h "</style>"
     puts $h "</head>"
     puts $h "<body>"
-    puts $h "<h1><a id='home'>F3k Contests</a></h1>"
-    if {$top} {
+    if {$pilots > 0} {
+	puts $h "<h1><a id='home'>F3k Contests for $pilots pilots</a></h1>"
+    } else {
+	puts $h "<h1><a id='home'>F3k Contests</a></h1>"
+    }
+    if {$pilots == 0} {
 	puts $h "<p>"
-	puts $h "This page tries to list a number of ways to arrange the groups in a F3K contest. Different methods are used to find a solution to this problem. The aim was to minimize the number of times 2 pilots fly in the same group during a contest. No other constraint have been taken into account (e.g. frequency clashes, teams, flying rounds back-to-back, ...)."
+	puts $h "This page tries to list a number of ways to arrange the groups in a F3K contest. Different methods are used to find a solution to this problem. The aim was to minimize the number of times 2 pilots fly in the same group during a contest. No other constraints have been taken into account (e.g. frequency clashes, teams, flying rounds back-to-back, ...)."
 	puts $h "</p>"
 	puts $h "<p>"
 	puts $h "For questions and feedback about the data and the method used to obtain this data, you can contact me at <a href=\"mailto:jos.decoster@gmail.com\">jos.decoster@gmail.com</a>."
@@ -191,8 +203,8 @@ proc htmlheader {h {top 0}} {
     }
 }
 
-proc htmlfooter {h {top 0}} {
-    if {$top} {
+proc htmlfooter {h pilots} {
+    if {$pilots == 0} {
 	puts $h "<h2 id='license'>License</h2>"
 	puts $h "<pre>
 ##
@@ -295,7 +307,7 @@ if {$generate_html} {
     set nfound 0
 
     set h [open ../html/index.html w]
-    htmlheader $h 1
+    htmlheader $h 0
     puts $h "<table border='1'><caption>Optimization methods</caption>"
     foreach {marg mti mtl mtlabb} $methods {
 	puts $h "<tr><td>$mtlabb</td><td>$mtl</td></tr>"
@@ -347,7 +359,7 @@ if {$generate_html} {
 		    set fnm "f3k_${p}p_${r}r_[join $gl _]_$mti.txt"
 		    if {[file exists ../data/$fnm]} {
 			incr nfound
-			lappend al "<a href='p${p}g[join $gl -]r${r}.html'>$mtlabb ([lsearch -index 0 $cost $mti])</a>"
+			lappend al "<a href='p${p}.html#g[join $gl -]r${r}'>$mtlabb ([lsearch -index 0 $cost $mti])</a>"
 		    } else {
 			lappend al "$mtlabb"
 		    }
@@ -359,15 +371,29 @@ if {$generate_html} {
 	}
     }
     puts $h "</table>"
-    htmlfooter $h 1
+    htmlfooter $h 0
 
     for {set p $mp} {$p <= $Mp} {incr p} {
+	set h [open ../html/p${p}.html w]
+	htmlheader $h $p
+	puts $h "<br><br><table border='1'><caption>Number of rounds for group structure</caption>"
+	puts -nonewline $h "<tr>"
+	foreach gl [groups $p] {
+	    puts -nonewline $h "<th>[llength $gl] [wgroups [llength $gl]] ([join $gl ,\ ])</th>"
+	}
+	puts $h "</tr>"
+	for {set r $mr} {$r <= $Mr} {incr r} {
+	    puts -nonewline $h "<tr>"
+	    foreach gl [groups $p] {
+		puts -nonewline $h "<td><a href ='#g[join $gl -]r${r}'>$r rounds</a></td>"
+	    }
+	    puts $h "</tr>"
+	}
+	puts $h "</table>"
 	foreach gl [groups $p] {
 	    for {set r $mr} {$r <= $Mr} {incr r} {
-		set h [open ../html/p${p}g[join $gl -]r${r}.html w]
-		htmlheader $h
 		set fnm "f3k_${p}p_${r}r_[join $gl _]"
-		puts $h "<h2>Method used to optimize a contest of $r tasks for $p pilots flying in [llength $gl] [wgroups [llength $gl]] ([join $gl ,\ ])</h2>"
+		puts $h "<h2><a id='g[join $gl -]r${r}'>Contest of $r tasks for $p pilots flying in [llength $gl] [wgroups [llength $gl]] ([join $gl ,\ ])</a></h2>"
 		set ndl [collect_duel_frequencies $fnm $methods dm]
 		puts $h "<table border='1'><caption>Duel frequencies overview</caption>"
 		puts -nonewline $h "<tr><th></th>"
@@ -395,9 +421,9 @@ if {$generate_html} {
 		    puts $h "<h3><a id='id$mti'>$mtl</a></h3>"
 		    add_contest $h ${fnm}_$mti.txt
 		}
-		htmlfooter $h
 	    }    
 	}
+	htmlfooter $h $p
     }
 
     puts "Processed $nfound of $ntot ([format %5.1f [expr {$nfound * 100.0 / $ntot}]]%), HTML written to directory ../html"
