@@ -122,7 +122,7 @@ proc add_contest {h fnm} {
 	}
 	puts $h "<tr><th>Task $ri</th>"
 	foreach g $gl {
-	    puts $h "<td>[join $g ,\ ]</td>"
+	    puts $h "<td>[join [lsort -integer $g] ,\ ]</td>"
 	}
 	puts $h "</tr>"
 	incr ri
@@ -191,6 +191,9 @@ proc htmlheader {h pilots} {
     if {$pilots == 0} {
 	puts $h "<p>"
 	puts $h "This page tries to list a number of ways to arrange the groups in a F3K contest. Different methods are used to find a solution to this problem. The aim was to minimize the number of times 2 pilots fly in the same group during a contest. No other constraints have been taken into account (e.g. frequency clashes, teams, flying rounds back-to-back, ...)."
+	puts $h "</p>"
+	puts $h "<p>"
+	puts $h "Starting from the group data as listed here, you can generate a random contests by applying a random mapping from your pilots list to the numbers used in the group data and by randomizing the group order for a given round. This makes it possible to store the group data found here in a F3K contest application without having to repeat the calculations."
 	puts $h "</p>"
 	puts $h "<p>"
 	puts $h "For questions and feedback about the data and the method used to obtain this data, you can contact me at <a href=\"mailto:jos.decoster@gmail.com\">jos.decoster@gmail.com</a>."
