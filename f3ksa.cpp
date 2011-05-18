@@ -578,12 +578,12 @@ int main(int argc, char *argv[])
     for(std::vector<int>::const_iterator I = groups.begin(); I != groups.end(); I++)
 	contest.add_group_npilots(*I);
 
-    if (groups.size() > 1) {
-	if (max_duels == 0) {
-	    contest.worst_case();
-	}
-	else if (max_duels < 0) {
-	    contest.draw();
+    if (max_duels == 0) {
+	contest.worst_case();
+    }
+    else if (max_duels < 0) {
+	contest.draw();
+	if (groups.size() > 1) {
 	    max_duels++;
 	    double cost = contest.cost();
 	    Contest ccontest = contest;
@@ -599,10 +599,10 @@ int main(int argc, char *argv[])
 		max_duels++;
 	    }
 	}
-	else {
-	    // Get a contest to start from
-	    contest.draw();
-	    
+    }
+    else {
+	contest.draw();
+	if (groups.size() > 1) {
 	    const gsl_rng_type * T;
 	    gsl_rng * r;
      
