@@ -584,17 +584,17 @@ int main(int argc, char *argv[])
     else if (max_duels < 0) {
 	contest.draw();
 	if (groups.size() > 1) {
-	    max_duels++;
 	    double cost = contest.cost();
 	    Contest ccontest = contest;
-	    std::cout << std::setw(10) << (-max_duels) << " " << cost << std::endl;
+	    std::cout << max_duels; P1(&contest); std::cout << std::endl;
+	    max_duels++;
 	    while(max_duels < 0) {
 		ccontest.draw();
 		double ccost = ccontest.cost();
 		if (ccost < cost) {
 		    contest = ccontest;
 		    cost = ccost;
-		    std::cout << std::setw(10) << (-max_duels) << " " << cost << std::endl;
+		    std::cout << max_duels; P1(&contest); std::cout << std::endl;
 		}
 		max_duels++;
 	    }
