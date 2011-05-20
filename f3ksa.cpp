@@ -541,7 +541,20 @@ int main(int argc, char *argv[])
     srandom(getpid());
 
     if (argc < 5) {
-	std::cerr << "usage: f3k #pilots #rounds #max_duels #pilots_in_group1 ..." << std::endl;
+	std::cerr << "usage: f3ksa #pilots #rounds #method #pilots_in_group1 ?#pilots_in_group2? ..." << std::endl;
+	std::cerr << std::endl;
+	std::cerr << "  #pilots              Number of pilots in the contest" << std::endl;
+	std::cerr << "  #rounds              Number of rounds/tasks in the contest" << std::endl;
+	std::cerr << "  #method              Method used to draw the contest, specified as integer" << std::endl;
+	std::cerr << "    < 0                Best of abs(specified number) of drawings" << std::endl;
+	std::cerr << "    0                  Worst case" << std::endl;
+	std::cerr << "    1                  Minimize number of duels with highest frequency" << std::endl;
+	std::cerr << "    > 1                Minimize number of duels with highest frequency until" << std::endl;
+	std::cerr << "                       specified number is reached, then try to maximize that" << std::endl;
+	std::cerr << "                       number of duels while trying to avoid pilots not duelling" << std::endl;
+	std::cerr << "  #pilots_in_group1    Number of pilots in first group" << std::endl;
+	std::cerr << "  ?#pilots_in_group2?  Number of pilots in second group" << std::endl;
+	std::cerr << "  ...                  ..." << std::endl;
 	return 1;
     }
 

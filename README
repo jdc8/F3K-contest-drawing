@@ -1,0 +1,124 @@
+F3K contest drawing
+===================
+
+Introduction:
+-------------
+
+This is an experiment to generate groups for an F3K contests using the following
+constraints:
+
+- Two pilots should be in the same group as few times as possible
+- Two pilots should be in the same group at least once
+
+Different methods are used:
+
+- Choosing best of a number of random draw
+- Starting from a random draw, try to remove most occurring duels or introduce
+  non-occurring duels using Simulated annealing.
+
+Requirements:
+-------------
+
+- GNU Scientific Library
+- Tcl/Tk to generate HTML and XML output
+
+Building the tool:
+------------------
+
+- Clone the Git repository
+
+    git clone git://github.com/jdc8/F3K-contest-drawing.git
+
+- If the 'GNU Scientific library' is not install in the standard place, edit the
+  Makfile and specify the GSL_INCLUDE_PATH and GSL_LIB_PATH
+
+- Run 'make'
+
+Running the tool:
+-----------------
+
+Run the tool as follows:
+
+  f3ksa #pilots #rounds #method #pilots_in_group1 ?#pilots_in_group2? ...
+
+    #pilots              Number of pilots in the contest
+    #rounds              Number of rounds/tasks in the contest
+    #method              Method used to draw the contest, see below
+    #pilots_in_group1    Number of pilots in first group
+    ?#pilots_in_group2?  Number of pilots in second group
+    ...                  ...
+
+Know drawing methods, specified as integer:
+
+    < 0                  Best of abs(specified number) of random drawings
+    0                    Worst case
+    1                    Minimize number of duels with highest frequency
+    > 1                  Minimize number of duels with highest frequency until
+                         specified number is reached, then try to maximize that
+                         number of duels while trying to avoid pilots not duelling
+
+Methods > 0 use simulated annealing.
+
+Results are written in the data subdirectory in a file with name:
+
+   f3k_<#pilots>p_<#rounds>r_<#pilots in group 1>?_<#pilots in group 2>...?_<method>.txt
+
+   The method is used in the file name as:
+
+   < 0     <abs(#method)>random
+   0       worstcase
+   > 0     <#method>siman
+
+Example:
+
+- 20 pilots, 2 groups, 10 tasks, best of 1000 drawings
+
+  f3ksa 20 10 -1000 10 10
+    
+- 20 pilots, 2 groups, 10 tasks, minimize number of duels with highest frequency
+
+  f3ksa 20 10 1 10 10
+
+  The result for this drawing is printed to file 
+
+      f3k_20p_10r_10_10_1siman.txt
+
+  as follows:
+
+pilots 20
+rounds 10
+groups 10 10
+method simulated_annealing
+max_duels 1
+round 1 {{2 14 18 6 0 1 7 13 5 10} {8 19 17 12 9 16 3 4 11 15}}
+round 2 {{13 3 1 19 11 0 5 14 17 8} {7 2 4 6 12 16 18 9 10 15}}
+round 3 {{7 14 8 5 1 4 17 9 2 0} {6 10 12 16 19 13 18 15 3 11}}
+round 4 {{7 16 15 19 2 13 8 14 18 17} {1 3 5 6 12 0 9 10 11 4}}
+round 5 {{8 19 5 4 2 10 16 6 13 3} {14 11 17 1 7 18 15 0 12 9}}
+round 6 {{7 6 5 15 0 17 8 10 11 4} {14 16 19 3 1 2 18 9 13 12}}
+round 7 {{17 12 0 6 13 9 4 7 11 19} {1 10 18 15 2 8 16 14 3 5}}
+round 8 {{4 19 12 16 18 11 5 17 1 6} {8 13 10 9 3 7 15 2 14 0}}
+round 9 {{10 13 7 9 11 14 16 4 5 15} {3 12 6 17 8 18 19 0 2 1}}
+round 10 {{15 5 18 9 14 6 0 8 19 11} {13 17 1 3 10 12 4 7 2 16}}
+duel_frequencies 0:2 2:11 4:92 6:85
+matrix  -  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19
+matrix  0  -  6  4  4  4  6  6  6  6  6  4  6  4  4  6  4  0  6  4  4
+matrix  1  6  -  6  6  4  6  4  4  4  4  4  4  6  4  6  2  4  6  6  4
+matrix  2  4  6  -  6  4  4  4  6  6  4  6  0  4  6  6  4  6  4  6  4
+matrix  3  4  6  6  -  4  4  4  2  6  4  6  4  6  6  4  4  6  4  4  6
+matrix  4  4  4  4  4  -  6  6  6  4  6  6  6  6  4  2  4  6  6  2  4
+matrix  5  6  6  4  4  6  -  6  4  6  4  6  6  2  4  6  4  4  4  4  4
+matrix  6  6  4  4  4  6  6  -  4  4  4  6  6  6  4  2  4  4  4  6  6
+matrix  7  6  4  6  2  6  4  4  -  4  6  6  4  4  6  6  6  4  6  4  2
+matrix  8  6  4  6  6  4  6  4  4  -  4  4  4  2  4  6  6  4  6  4  6
+matrix  9  6  4  4  4  6  4  4  6  4  -  4  6  6  4  6  6  4  4  4  4
+matrix 10  4  4  6  6  6  6  6  6  4  4  -  4  4  6  4  6  6  2  4  2
+matrix 11  6  4  0  4  6  6  6  4  4  6  4  -  6  4  4  6  4  6  4  6
+matrix 12  4  6  4  6  6  2  6  4  2  6  4  6  -  4  2  4  6  6  6  6
+matrix 13  4  4  6  6  4  4  4  6  4  4  6  4  4  -  6  4  6  4  4  6
+matrix 14  6  6  6  4  2  6  2  6  6  6  4  4  2  6  -  6  4  4  6  4
+matrix 15  4  2  4  4  4  4  4  6  6  6  6  6  4  4  6  -  6  4  6  4
+matrix 16  0  4  6  6  6  4  4  4  4  4  6  4  6  6  4  6  -  4  6  6
+matrix 17  6  6  4  4  6  4  4  6  6  4  2  6  6  4  4  4  4  -  4  6
+matrix 18  4  6  6  4  2  4  6  4  4  4  4  4  6  4  6  6  6  4  -  6
+matrix 19  4  4  4  6  4  4  6  2  6  4  2  6  6  6  4  4  6  6  6  -
