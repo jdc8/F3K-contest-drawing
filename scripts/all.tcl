@@ -455,8 +455,6 @@ if {$generate_html} {
 	lassign [split $k ,] fnm mti
 	lappend lcost($fnm) [list $mti $v]
     }
-    puts "size scost: [llength [array names scost]]"
-    puts "size lcost: [llength [array names lcost]]"
     foreach {k v} [array get lcost] {
 	set lcost($k) [lsort -real -increasing -index 1 $v]
 	incr mcost([lindex $lcost($k) 0 0])
@@ -486,37 +484,41 @@ if {$generate_xml} {
     for {set p $mp} {$p <= $Mp} {incr p} {
 	for {set r $mr} {$r <= $Mr} {incr r} {
 	    foreach gl [groups $p] {
-		puts $x " <contest pilots=\"$p\" rounds=\"$r\" groups=\"[llength $gl]\">"
+		# Only best result in the XML
+		set fnm "f3k_${p}p_${r}r_[join $gl _]"
+		unset -nocomplain dm
+		set cost [list]
+		set ndl [collect_duel_frequencies $fnm $methods dm]
 		foreach {marg mti mtl mtlabb} $methods {
-		    # No random result in the XML to keep the file size lower and the simulated annealing results are always better.
-		    if {$marg <= 0} continue
-		    incr ntot
-		    set fnm "f3k_${p}p_${r}r_[join $gl _]_${mti}.txt"
-		    puts $x "  <draw method=\"$mti\" filenam=\"$fnm\">"
-		    if {[file exists ../data/$fnm]} {
-			incr nfound
-			set f [open ../data/$fnm r]
-			set ll [split [read $f] \n]
-			close $f
-			foreach l $ll {
-			    switch -exact -- [lindex $l 0] {
-				round { 
-				    puts -nonewline $x "   <round id=\"[lindex $l 1]\">"
-				    set rgid 0
-				    foreach rg [lindex $l 2] {
-					puts -nonewline $x "    <group id=\"$rgid\">"
-					foreach rgp $rg {
-					    puts -nonewline $x "<p>$rgp</p>"
-					}
-					puts $x "</group>"
-					incr rgid
+		    lappend cost [list $mti [cost dm $mti]]
+		}
+		set cost [lsort -increasing -real -index 1 $cost]
+		set mti [lindex $cost 0 0]
+		incr ntot
+		set fnm "f3k_${p}p_${r}r_[join $gl _]_${mti}.txt"
+		puts $x " <contest pilots=\"$p\" rounds=\"$r\" groups=\"[llength $gl]\" method=\"$mti\" filenam=\"$fnm\">"
+		if {[file exists ../data/$fnm]} {
+		    incr nfound
+		    set f [open ../data/$fnm r]
+		    set ll [split [read $f] \n]
+		    close $f
+		    foreach l $ll {
+			switch -exact -- [lindex $l 0] {
+			    round { 
+				puts $x "  <round id=\"[lindex $l 1]\">"
+				set rgid 0
+				foreach rg [lindex $l 2] {
+				    puts -nonewline $x "   <group id=\"$rgid\">"
+				    foreach rgp $rg {
+					puts -nonewline $x "<p>$rgp</p>"
 				    }
-				    puts $x "   </round>"
+				    puts $x "</group>"
+				    incr rgid
 				}
+				puts $x "  </round>"
 			    }
 			}
 		    }
-		    puts $x "  </draw>"
 		}
 		puts $x " </contest>"
 	    }
@@ -532,12 +534,15 @@ if {$generate_script} {
 
     set ntot 0
     set nmiss 0
+    set fnml {}
 
     set fl {}
     for {set i 0} {$i < $parallel} {incr i} {
-	set f [open all$i.sh w]
+	set fnm all$i.sh
+	set f [open $fnm w]
 	puts $f "#/bin/sh"
 	lappend fl $f
+	lappend fnml $fnm
     }
     for {set p $mp} {$p <= $Mp} {incr p} {
 	for {set r $mr} {$r <= $Mr} {incr r} {
@@ -558,5 +563,5 @@ if {$generate_script} {
     }
     close $f
 
-    puts "Missing $nmiss of $ntot ([format %5.1f [expr {$nmiss * 100.0 / $ntot}]]%), commands written to 'all.sh'"
+    puts "Missing $nmiss of $ntot ([format %5.1f [expr {$nmiss * 100.0 / $ntot}]]%), commands written to '[join $fnml "', '"]'"
 }
