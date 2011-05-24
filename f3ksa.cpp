@@ -8,6 +8,7 @@
 #include <sstream>
 #include <iomanip>
 #include <map>
+#include <cmath>
 
 /* set up parameters for this simulated annealing run */
      
@@ -33,6 +34,8 @@
 
 gsl_siman_params_t params = {N_TRIES, ITERS_FIXED_T, STEP_SIZE,
 			     K, T_INITIAL, MU_T, T_MIN};
+
+int use_mad = 0;
 
 inline std::pair<int,int> mangle(int p, int q)
 {
@@ -78,6 +81,7 @@ struct Contest {
     void duels(std::map<std::pair<int, int>, int>& eduels) const;
     int sum_duel_occurences(const std::map<std::pair<int, int>, int>& eduels,
 			    std::map<int, int>& ov) const;
+    double mad(const std::map<int, int>&) const;
     double cost() const;
     void step(double u, double step_size);
     void report();
@@ -136,31 +140,59 @@ int Contest::sum_duel_occurences(const std::map<std::pair<int, int>, int>& eduel
     return mov;
 }
 
+double Contest::mad(const std::map<int, int>& ov) const
+{
+    double tm = 0;
+    double md = 0;
+    for(std::map<int, int>::const_iterator I = ov.begin(); I != ov.end(); I++) {
+	tm = tm + I->second;
+	md = md +I->first * I->second;
+    }
+    double wad = md / tm;
+    double ad = 0;
+    for(std::map<int, int>::const_iterator I = ov.begin(); I != ov.end(); I++)
+	ad = ad + std::abs(I->first - wad) *  I->second;
+    double mad = ad / tm;
+    return mad;
+}
+
 double Contest::cost() const 
 {
     std::map<int, int> ov;
     int mov = sum_duel_occurences(cduels, ov);
     double cost = 0;
-    
+
+    if (use_mad) {
+	double m = mad(ov);
+	cost = m;
+	if (max_duels >= 0) {
+	    if (max_duels != 1000000 && ov.count(0))
+		cost += ov[0] * 0.002;
+	    for(int i = max_duels; i <= mov; i++)
+		cost += ov[i] * 0.002 * pow(10,i-max_duels);
+	}
+    }
+    else {
 //     cost = cost + mov * 10e9; // don't like many duels
 //     cost = cost - ov[mov]; // like many occurences of max number of duels
 //     if (ov.count(0))
 //  	cost = cost + ov[0] * 1000; // don't like pilots not dueling
 
-    cost = cost + mov * 10e9; // don't like many duels
-    if (mov <= max_duels) {
-	if (ov.count(0))
-	    cost += ov[0] * 10000000; // Try again with 10e6
-	for(int i = 1; i <= max_duels; i++)
-	    if (ov.count(i))
-		cost -= ov[i] * (i == 2 ? 20000 : 1000);
-    }
-    else
-	cost += ov[mov] * 10000000; // Try again with 10e6
+	cost = cost + mov * 10e9; // don't like many duels
+	if (mov <= max_duels) {
+	    if (ov.count(0))
+		cost += ov[0] * 10000000; // Try again with 10e6
+	    for(int i = 1; i <= max_duels; i++)
+		if (ov.count(i))
+		    cost -= ov[i] * (i == 2 ? 20000 : 1000);
+	}
+	else
+	    cost += ov[mov] * 10000000; // Try again with 10e6
 
 //     for(int i = 0; i <= mov; i++)
 // 	if (ov.count(i))
 // 	    cost += ov[i] * pow(10, 3*i);
+    }
     
     return cost;
 }
@@ -211,6 +243,8 @@ void Contest::report()
 	fos << (-max_duels) << "random";
     else
 	fos << max_duels << "siman";
+    if (use_mad)
+	fos << "_mad";
     fos << ".txt";
     std::ofstream os(fos.str().c_str());
     os << "pilots " << npilots << "\n";
@@ -234,6 +268,7 @@ void Contest::report()
 	if (ov.count(i))
 	    os << " " << i << ":" << ov[i];
     os << "\n";
+    os << "mean_absolute_deviation " << mad(ov) << "\n";
     os << "matrix  -";
     for(int p = 0; p < npilots; p++)
 	os << " " << std::setw(2) << p;
@@ -441,7 +476,41 @@ void Contest::step(double u, double step_size)
 {
     std::map<int, int> ov;
     int mov = sum_duel_occurences(cduels, ov);
-    if (mov >= max_duels) {
+    if (use_mad) {
+	int i = 0;
+	std::vector<std::pair<int, int> > eduelsm;
+	for(std::map<std::pair<int, int>, int>::const_iterator I = cduels.begin(); I != cduels.end(); I++)
+	    if (I->second == mov)
+		eduelsm.push_back(I->first);
+	for(; i < (u * 100) && eduelsm.size(); i++) {
+	    int rr = 0;
+	    int r0 = 0;
+	    do {
+		rr = random() % nrounds;
+		r0 = random() % eduelsm.size();
+	    } while(!rounds[rr].stepm(eduelsm[r0].first, eduelsm[r0].second, cduels));
+	    eduelsm.erase(eduelsm.begin()+r0);
+	}
+// 	for(; i < (u * 100); i++) {
+// 	    int rr = random() % nrounds;
+// 	    rounds[rr].step(cduels);
+// 	}
+	std::vector<std::pair<int, int> > eduels0;
+	for(std::map<std::pair<int, int>, int>::const_iterator I = cduels.begin(); I != cduels.end(); I++)
+	    if (I->second == 0)
+		eduels0.push_back(I->first);
+	for(; i < (u * 10) && eduels0.size(); i++) {
+	    int rr = random() % nrounds;
+	    int r0 = random() % eduels0.size();
+	    rounds[rr].step0(eduels0[r0].first, eduels0[r0].second, cduels);
+	    eduels0.erase(eduels0.begin()+r0);
+	}
+//	for(; i < (u * 10) && eduels0.size(); i++) {
+//		int rr = random() % nrounds;
+//		rounds[rr].step(cduels);
+//	    }
+    }
+    else if (mov >= max_duels) {
  	for(int i = 0; i < (u*100); i++) {
  	    int rr = random() % nrounds;
  	    rounds[rr].step(cduels);
@@ -512,10 +581,11 @@ void P1(void *xp)
     Contest* c = (Contest*)xp;
     std::map<int, int> ov;
     int mov = c->sum_duel_occurences(c->cduels, ov);
-    std::cout << "#" << c->cost();
+    std::cout << "#";
     for(int i = 0; i <= mov; i++)
 	if (ov.count(i))
 	    std::cout << "," << i << ":" << ov[i];
+    std::cout << "%" << c->mad(ov);
 //    std::cout << "\n" << *c << std::endl;
 }
 
@@ -545,13 +615,20 @@ int main(int argc, char *argv[])
 	std::cerr << std::endl;
 	std::cerr << "  #pilots              Number of pilots in the contest" << std::endl;
 	std::cerr << "  #rounds              Number of rounds/tasks in the contest" << std::endl;
-	std::cerr << "  #method              Method used to draw the contest, specified as integer" << std::endl;
-	std::cerr << "    < 0                Best of abs(specified number) of drawings" << std::endl;
-	std::cerr << "    0                  Worst case" << std::endl;
-	std::cerr << "    1                  Minimize number of duels with highest frequency" << std::endl;
-	std::cerr << "    > 1                Minimize number of duels with highest frequency until" << std::endl;
-	std::cerr << "                       specified number is reached, then try to maximize that" << std::endl;
-	std::cerr << "                       number of duels while trying to avoid pilots not duelling" << std::endl;
+	std::cerr << "  #method              Method used to draw the contest" << std::endl;
+	std::cerr << "    <integer>            Use built-in cost fucntion" << std::endl;
+	std::cerr << "    < 0                    Best of abs(specified number) of drawings" << std::endl;
+	std::cerr << "    0                      Worst case" << std::endl;
+	std::cerr << "    1                      Minimize number of duels with highest frequency" << std::endl;
+	std::cerr << "    > 1                    Minimize number of duels with highest frequency until" << std::endl;
+	std::cerr << "                           specified number is reached, then try to maximize that" << std::endl;
+	std::cerr << "                           number of duels while trying to avoid pilots not duelling" << std::endl;
+	std::cerr << "    m?<integer>?         Use mean absolute deviation" << std::endl;
+	std::cerr << "    no integer             Minimize the mean absolute deviation" << std::endl;
+	std::cerr << "    < 0                    Best of abs(specified number) of drawings" << std::endl;
+	std::cerr << "    > 0                    Minimize the mean absolute deviation with extra cost for" << std::endl;
+	std::cerr << "                           duels with frequency 0 and with frequency >= specified" << std::endl;
+	std::cerr << "                           integer" << std::endl;
 	std::cerr << "  #pilots_in_group1    Number of pilots in first group" << std::endl;
 	std::cerr << "  ?#pilots_in_group2?  Number of pilots in second group" << std::endl;
 	std::cerr << "  ...                  ..." << std::endl;
@@ -569,9 +646,20 @@ int main(int argc, char *argv[])
     is2 >> rounds;
 
     int max_duels = 0;
-    std::istringstream is3(argv[3]);
-    is3 >> max_duels;
-    
+    if (argv[3][0] == 'm') {
+	use_mad = 1;
+	if (strlen(argv[3]) > 1) {
+	    std::istringstream is3(&argv[3][1]);
+	    is3 >> max_duels;
+	}
+	else
+	    max_duels = 1000000;
+    }
+    else {
+	std::istringstream is3(argv[3]);
+	is3 >> max_duels;
+    }
+
     std::vector<int> groups;
     int tpilots = 0;
     for(int i = 4; i < argc; i++) {

@@ -80,12 +80,19 @@ Run the tool as follows:
 
 Know drawing methods, specified as integer:
 
-    < 0                  Best of abs(specified number) of random drawings
-    0                    Worst case
-    1                    Minimize number of duels with highest frequency
-    > 1                  Minimize number of duels with highest frequency until
-                         specified number is reached, then try to maximize that
-                         number of duels while trying to avoid pilots not duelling
+    <integer>            Use built-in cost fucntion
+    < 0                    Best of abs(specified number) of drawings
+    0                      Worst case
+    1                      Minimize number of duels with highest frequency
+    > 1                    Minimize number of duels with highest frequency until
+                           specified number is reached, then try to maximize that
+                           number of duels while trying to avoid pilots not duelling
+    m?<integer>?         Use mean absolute deviation
+    no integer             Minimize the mean absolute deviation
+    < 0                    Best of abs(specified number) of drawings
+    > 0                    Minimize the mean absolute deviation with extra cost for
+                           duels with frequency 0 and with frequency >= specified
+                           integer
 
 Methods > 0 use simulated annealing.
 
@@ -98,6 +105,8 @@ Results are written in the data subdirectory in a file with name:
    < 0     <abs(#method)>random
    0       worstcase
    > 0     <#method>siman
+
+When using the mean absolute deviation, _mad is added to the <method> part.
 
 Example:
 

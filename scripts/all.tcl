@@ -100,6 +100,42 @@ set methods {
     5        5siman        "Maximized frequency of 5 duels and minimized frequency of 0 duels using simulated annealing" "Max5"
 }
 
+proc mad {c} {
+    set n 0
+    set tm 0
+    set md 0
+    foreach i $c {
+	incr tm $i
+	incr md [expr {$i * $n}]
+	incr n
+    }
+    set wad [expr {double($md)/$tm}]
+    set n 0
+    set ad 0
+    foreach i $c {
+	set ad [expr {$ad + abs($n - $wad) * $i}]
+	incr n
+    }
+    set mad [expr {double($ad) / $tm}]
+    return $mad
+}
+
+proc mad1 {l} {
+    set l [lsort -integer $l]
+    set L [llength $l]
+    if {$L % 2} {
+	set M [lindex $l [expr {$L / 2}]]
+    } else {
+	set M [expr {([lindex $l [expr {$L / 2 - 1}]] + [lindex $l [expr {$L / 2}]]) / 2.0}]
+    }
+    set S 0
+    foreach i $l {
+	set S [expr {$S + abs($i - $M)}]
+    }
+    set S [expr {$S / double($L)}]
+    return $S
+}
+
 proc add_contest {h fnm} {
     if {![file exists ../data/$fnm]} {
 	puts $h "Contest data not available yet"
@@ -423,18 +459,21 @@ if {$generate_html} {
 		foreach nd $ndl {
 		    puts -nonewline $h "<th class='w3'>$nd</th>"
 		}
-		puts $h "<th>Cost</th></tr>"
+		puts $h "<th>Cost</th><th>Mean deviation</th></tr>"
 		foreach {marg mti mtl mtlabb} $methods {
 		    puts -nonewline $h "<tr><td><a href='#idg[join $gl -]r${r}$mti'>$mtl</a></td>"
+		    set L {}
 		    foreach nd $ndl {
 			if {[info exists dm($mti,$nd)]} {
 			    puts -nonewline $h "<td class='w3'>$dm($mti,$nd)</td>"
+			    lappend L $dm($mti,$nd)
 			} else {
 			    puts -nonewline $h "<td class='w3'>-</td>"
+			    lappend L 0
 			}
 		    }		
 		    if {[info exists dcost($fnm,$mti)]} {
-			puts $h "<td>$dcost($fnm,$mti)</td></tr>"
+			puts $h "<td>$dcost($fnm,$mti)</td><td>[mad $L] ($L)</td></tr>"
 		    } else {
 			puts $h "<td>-</td></tr>"
 		    }
