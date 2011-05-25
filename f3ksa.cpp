@@ -241,6 +241,8 @@ void Contest::report()
 	fos << "worstcase";
     else if (max_duels < 0)
 	fos << (-max_duels) << "random";
+    else if (use_mad && max_duels == 1000000)
+	fos << "siman";
     else
 	fos << max_duels << "siman";
     if (use_mad)

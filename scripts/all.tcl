@@ -98,6 +98,8 @@ set methods {
     3        3siman        "Maximized frequency of 3 duels and minimized frequency of 0 duels using simulated annealing" "Max3"
     4        4siman        "Maximized frequency of 4 duels and minimized frequency of 0 duels using simulated annealing" "Max4"
     5        5siman        "Maximized frequency of 5 duels and minimized frequency of 0 duels using simulated annealing" "Max5"
+    m        siman_mad     "Minimized mean absolute deviation"                                                           "MAD"
+    m4       4siman_mad    "Minimized mean absolute deviation with extra cost for duels with frequency 0 and 4"          "MAD4"
 }
 
 proc mad {c} {
