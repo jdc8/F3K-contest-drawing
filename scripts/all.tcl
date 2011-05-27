@@ -689,7 +689,7 @@ if {$generate_script} {
 		    if {!$incremental || ![file exists "../data/${fnm}_$mti.txt"]} {
 			incr nmiss
 			puts $mk "data/${fnm}_$mti.txt:"
-			puts $mk "\t./f3ksa $p $r $marg [join $gl]"
+			puts $mk "\t./f3ksa $p $r $marg [join $gl] odata"
 			lappend ml "data/${fnm}_$mti.txt"
 		    }
 		}

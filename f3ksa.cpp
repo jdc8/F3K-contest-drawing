@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <map>
 #include <cmath>
+#include <set>
 
 /* set up parameters for this simulated annealing run */
      
@@ -36,6 +37,7 @@ gsl_siman_params_t params = {N_TRIES, ITERS_FIXED_T, STEP_SIZE,
 			     K, T_INITIAL, MU_T, T_MIN};
 
 int use_mad = 0;
+const int max_conflicted_step_tries = 1000;
 
 inline std::pair<int,int> mangle(int p, int q)
 {
@@ -48,8 +50,9 @@ struct Contest;
 
 struct Group {
     std::vector<int> pilots;
-    void draw(const Contest*, const Round*, int, std::map<std::pair<int, int>, int>&);
+    int draw(const Contest*, const Round*, int, std::map<std::pair<int, int>, int>&);
     int in_group(int p) const;
+    int conflicting(const Contest* contest,int p, int q=-1) const;
     void duels(std::map<std::pair<int, int>, int>& eduels) const;
 };
 
@@ -61,9 +64,9 @@ struct Round {
     void duels(std::map<std::pair<int, int>, int>& eduels) const;
     void remove_duels(int, int, std::map<std::pair<int, int>, int>& eduels) const;
     void add_duels(int, int, std::map<std::pair<int, int>, int>& eduels) const;
-    void step(std::map<std::pair<int, int>, int>&);
-    void step0(int p, int q, std::map<std::pair<int, int>, int>&);
-    int stepm(int p, int q, std::map<std::pair<int, int>, int>&);
+    int step(const Contest*, std::map<std::pair<int, int>, int>&);
+    int step0(const Contest*,int p, int q, std::map<std::pair<int, int>, int>&);
+    int stepm(const Contest*,int p, int q, std::map<std::pair<int, int>, int>&);
     void get_group_and_index(int p, int& pg, int& pi) const;
     Round() {}
 };
@@ -73,6 +76,8 @@ struct Contest {
     std::map<std::pair<int, int>, int> cduels;
     int npilots;
     std::vector<int> group_npilots;
+    std::map<int, std::set<int> > conflicts;
+    std::vector<std::pair<int, int> > conflicts_list;
     int nrounds;
     int max_duels;
     void draw();
@@ -84,8 +89,17 @@ struct Contest {
     double mad(const std::map<int, int>&) const;
     double cost() const;
     void step(double u, double step_size);
-    void report();
+    void step0(double, int&);
+    void stepm(double, int, int&);
+    void step(double, int&);
+    void report(std::string rpath);
     void init_duels();
+    void add_conflict(const std::pair<int, int>& c) {
+	conflicts[c.first].insert(c.second);
+	conflicts[c.second].insert(c.first);
+	conflicts_list.push_back(c);
+    }
+    int conflicting(int a, int b) const { return conflicts.count(a) && conflicts.at(a).count(b); }
     Contest() {}
     Contest(int inpilots, int inrounds, int imax_duels) : npilots(inpilots), nrounds(inrounds), max_duels(imax_duels) {
 	init_duels();
@@ -189,7 +203,7 @@ double Contest::cost() const
 	else
 	    cost += ov[mov] * 10000000; // Try again with 10e6
 
-//     for(int i = 0; i <= mov; i++)
+//    for(int i = 0; i <= mov; i++)
 // 	if (ov.count(i))
 // 	    cost += ov[i] * pow(10, 3*i);
     }
@@ -230,35 +244,57 @@ inline std::ostream& operator<<(std::ostream& os, const Contest& c)
     return os;
 }
 
-void Contest::report()
+void Contest::report(std::string rpath)
 {
-    std::ostringstream fos;
-    fos << "data/f3k_" << npilots << "p_" << nrounds << "r";
-    for(std::vector<int>::const_iterator I = group_npilots.begin(); I != group_npilots.end(); I++)
-	fos << "_" << *I;
-    fos << "_";
-    if (max_duels == 0)
-	fos << "worstcase";
-    else if (max_duels < 0)
-	fos << (-max_duels) << "random";
-    else if (use_mad && max_duels == 1000000)
-	fos << "siman";
-    else
-	fos << max_duels << "siman";
-    if (use_mad)
-	fos << "_mad";
-    fos << ".txt";
-    std::ofstream os(fos.str().c_str());
+    if (rpath.size() ==0)
+	rpath = "f3k.txt";
+    else if (rpath == "data") {
+	std::ostringstream fos;
+	fos << "data/f3k_" << npilots << "p_" << nrounds << "r";
+	for(std::vector<int>::const_iterator I = group_npilots.begin(); I != group_npilots.end(); I++)
+	    fos << "_" << *I;
+	fos << "_";
+	if (max_duels == 0)
+	    fos << "worstcase";
+	else if (max_duels < 0)
+	    fos << (-max_duels) << "random";
+	else if (use_mad && max_duels == 1000000)
+	    fos << "siman";
+	else
+	    fos << max_duels << "siman";
+	if (use_mad)
+	    fos << "_mad";
+	fos << ".txt";
+	rpath = fos.str();
+    }
+    std::cout << "Writing results to file '" << rpath << "'" << std::endl;
+    std::ofstream os(rpath.c_str());
     os << "pilots " << npilots << "\n";
     os << "rounds " << nrounds << "\n";
     os << "groups";
     for(std::vector<int>::const_iterator I = group_npilots.begin(); I != group_npilots.end(); I++)
 	os << " " << *I;
     os << "\n";
-    if (max_duels < 0)
-	os << "method random\nnumber_of_draws " << (-max_duels) << "\n";
-    else
-	os << "method simulated_annealing\nmax_duels " << max_duels << "\n";
+    if (max_duels == 0)
+	os << "method worst_case\n";
+    else if (use_mad) {
+	if (max_duels < 0)
+	    os << "method random_mean_absolute_deviation\nnumber_of_draws " << (-max_duels) << "\n";
+	else
+	    os << "method simulated_annealing_mean_absolute_deviation\nmax_duels " << max_duels << "\n";
+    }
+    else {
+	if (max_duels < 0)
+	    os << "method random\nnumber_of_draws " << (-max_duels) << "\n";
+	else
+	    os << "method simulated_annealing\nmax_duels " << max_duels << "\n";
+    }
+    if (conflicts.size()) {
+	os << "conflicts";
+	for(std::vector<std::pair<int, int> >::const_iterator I = conflicts_list.begin(); I != conflicts_list.end(); I++)
+	    os << " " << I->first << "," << I->second;
+	os << "\n";
+    }
     int r = 1;
     for(std::vector<Round>::const_iterator I = rounds.begin(); I != rounds.end(); I++)
 	os << "round " << r++ << " {" << *I << "}\n";
@@ -299,6 +335,15 @@ int Group::in_group(int p) const
     return 0;
 }
 
+int Group::conflicting(const Contest* contest,int p, int q) const
+{
+    // Check if pilots p is not conflicting with other pilots in the group, conflict with pilot q is allowed
+    for(std::vector<int>::const_iterator I = pilots.begin(); I != pilots.end(); I++)
+	if (*I != q && contest->conflicting(p, *I))
+	    return 1;
+    return 0;
+}
+
 int Round::in_round(int p) const
 {
     for(std::vector<Group>::const_iterator I = groups.begin(); I != groups.end(); I++)
@@ -307,26 +352,35 @@ int Round::in_round(int p) const
     return 0;
 }
 
-void Group::draw(const Contest* contest, const Round* round, int npilots, std::map<std::pair<int, int>, int>& cduels)
+int Group::draw(const Contest* contest, const Round* round, int npilots, std::map<std::pair<int, int>, int>& cduels)
 {
+    const int max_draws = 1000;
+    int curr_draw = 0;
     pilots.clear();
     do {
 	int p = random() % contest->npilots;
-	if (!round->in_round(p) && !this->in_group(p)) {
+	if (!round->in_round(p) && !this->in_group(p) && !conflicting(contest, p)) {
 	    for(std::vector<int>::const_iterator I = pilots.begin(); I != pilots.end(); I++)
 		cduels[mangle(p, *I)]++;
 	    pilots.push_back(p);
 	}
-    } while (pilots.size() < npilots);
+	curr_draw++;
+    } while (pilots.size() < npilots && curr_draw < max_draws);
+    return pilots.size() == npilots;
 }
 
 void Round::draw(const Contest* contest, std::map<std::pair<int, int>, int>& cduels)
 {
-    groups.clear();
-    for(std::vector<int>::const_iterator I = contest->group_npilots.begin(); I != contest->group_npilots.end(); I++) {
-	Group group;
-	group.draw(contest, this, *I, cduels);
-	groups.push_back(group);
+    std::map<std::pair<int, int>, int> tduels = cduels;
+    while(groups.size() != contest->group_npilots.size()) {
+	groups.clear();
+	cduels = tduels;
+	for(std::vector<int>::const_iterator I = contest->group_npilots.begin(); I != contest->group_npilots.end(); I++) {
+	    Group group;
+	    if (!group.draw(contest, this, *I, cduels))
+		break;
+	    groups.push_back(group);
+	}
     }
 }
 
@@ -401,7 +455,7 @@ inline void Round::add_duels(int p, int g, std::map<std::pair<int, int>, int>& c
 	    cduels[mangle(*I, p)]++;
 }
 
-void Round::step(std::map<std::pair<int, int>, int>& cduels)
+int Round::step(const Contest* contest, std::map<std::pair<int, int>, int>& cduels)
 {
     // Swap 2 pilots from different groups
     int rg0 = random() % groups.size();
@@ -415,15 +469,20 @@ void Round::step(std::map<std::pair<int, int>, int>& cduels)
     int rp1 = random() % groups[rg1].pilots.size();
     int p = groups[rg0].pilots[rp0];
     int q = groups[rg1].pilots[rp1];
+    if (groups[rg0].conflicting(contest, q, p))
+	return 0;
+    if (groups[rg1].conflicting(contest, p, q))
+	return 0;
     remove_duels(p, rg0, cduels);
     remove_duels(q, rg1, cduels);
     groups[rg0].pilots[rp0] = q;
     groups[rg1].pilots[rp1] = p;
     add_duels(p, rg1, cduels);
     add_duels(q, rg0, cduels);
+    return 1;
 }
 
-void Round::step0(int p, int q, std::map<std::pair<int, int>, int>& cduels)
+int Round::step0(const Contest* contest, int p, int q, std::map<std::pair<int, int>, int>& cduels)
 {
     // Get random pilots from same group as p and swap it with pilot q
     int pg = 0;
@@ -438,15 +497,20 @@ void Round::step0(int p, int q, std::map<std::pair<int, int>, int>& cduels)
     } while (r == pi);
     int rtmp = groups[pg].pilots[r];
     int qtmp = groups[qg].pilots[qi];
+    if (groups[pg].conflicting(contest, qtmp, rtmp))
+	return 0;
+    if (groups[qg].conflicting(contest, rtmp, qtmp))
+	return 0;
     remove_duels(rtmp, pg, cduels);
     remove_duels(qtmp, qg, cduels);
     groups[pg].pilots[r] = qtmp;
     groups[qg].pilots[qi] = rtmp;
     add_duels(rtmp, qg, cduels);
     add_duels(qtmp, pg, cduels);
+    return 1;
 }
 
-int Round::stepm(int p, int q, std::map<std::pair<int, int>, int>& cduels)
+int Round::stepm(const Contest* contest, int p, int q, std::map<std::pair<int, int>, int>& cduels)
 {
     // When pilots p and q are in same group, swap pilots p with pilot from other group
     int pg = 0;
@@ -465,6 +529,10 @@ int Round::stepm(int p, int q, std::map<std::pair<int, int>, int>& cduels)
     int ri = random() % groups[rg].pilots.size();
     int ptmp = groups[pg].pilots[pi];
     int rtmp = groups[rg].pilots[ri];
+    if (groups[pg].conflicting(contest, rtmp, ptmp))
+	return 0;
+    if (groups[rg].conflicting(contest, ptmp, rtmp))
+	return 0;
     remove_duels(ptmp, pg, cduels);
     remove_duels(rtmp, rg, cduels);
     groups[pg].pilots[pi] = rtmp;
@@ -474,87 +542,80 @@ int Round::stepm(int p, int q, std::map<std::pair<int, int>, int>& cduels)
     return 1;
 }
 
+void Contest::stepm(double u, int mov, int& i) 
+{
+    std::vector<std::pair<int, int> > eduelsm;
+    for(std::map<std::pair<int, int>, int>::const_iterator I = cduels.begin(); I != cduels.end(); I++)
+	if (I->second == mov)
+	    eduelsm.push_back(I->first);
+    for(; i < u && eduelsm.size(); i++) {
+	int curr_try = 0;
+	int stepped = 0;
+	do {
+	    int rr = random() % nrounds;
+	    int r0 = random() % eduelsm.size();
+	    curr_try++;
+	    if (stepped = rounds[rr].stepm(this, eduelsm[r0].first, eduelsm[r0].second, cduels))
+		eduelsm.erase(eduelsm.begin()+r0);
+	} while(!stepped && curr_try < max_conflicted_step_tries);
+    }
+}
+
+void Contest::step0(double u, int& i)
+{
+    std::vector<std::pair<int, int> > eduels0;
+    for(std::map<std::pair<int, int>, int>::const_iterator I = cduels.begin(); I != cduels.end(); I++)
+	if (I->second == 0)
+	    eduels0.push_back(I->first);
+    for(; i < u && eduels0.size(); i++) {
+	int curr_try = 0;
+	int stepped = 0;
+	do {
+	    int rr = random() % nrounds;
+	    int r0 = random() % eduels0.size();
+	    curr_try++;
+	    if (stepped = rounds[rr].step0(this, eduels0[r0].first, eduels0[r0].second, cduels))
+		eduels0.erase(eduels0.begin()+r0);
+	} while(!stepped && curr_try < max_conflicted_step_tries);
+    }
+}
+
+void Contest::step(double u, int& i)
+{
+    for(; i < u; i++) {
+	int stepped = 0;
+	int curr_try = 0;
+	do {
+	    int rr = random() % nrounds;
+	    curr_try++;
+	    stepped = rounds[rr].step(this, cduels);
+	} while(!stepped && curr_try < max_conflicted_step_tries);
+    }
+}
+
 void Contest::step(double u, double step_size)
 {
     std::map<int, int> ov;
     int mov = sum_duel_occurences(cduels, ov);
     if (use_mad) {
 	int i = 0;
-	std::vector<std::pair<int, int> > eduelsm;
-	for(std::map<std::pair<int, int>, int>::const_iterator I = cduels.begin(); I != cduels.end(); I++)
-	    if (I->second == mov)
-		eduelsm.push_back(I->first);
-	for(; i < (u * 100) && eduelsm.size(); i++) {
-	    int rr = 0;
-	    int r0 = 0;
-	    do {
-		rr = random() % nrounds;
-		r0 = random() % eduelsm.size();
-	    } while(!rounds[rr].stepm(eduelsm[r0].first, eduelsm[r0].second, cduels));
-	    eduelsm.erase(eduelsm.begin()+r0);
-	}
-// 	for(; i < (u * 100); i++) {
-// 	    int rr = random() % nrounds;
-// 	    rounds[rr].step(cduels);
-// 	}
-	std::vector<std::pair<int, int> > eduels0;
-	for(std::map<std::pair<int, int>, int>::const_iterator I = cduels.begin(); I != cduels.end(); I++)
-	    if (I->second == 0)
-		eduels0.push_back(I->first);
-	for(; i < (u * 10) && eduels0.size(); i++) {
-	    int rr = random() % nrounds;
-	    int r0 = random() % eduels0.size();
-	    rounds[rr].step0(eduels0[r0].first, eduels0[r0].second, cduels);
-	    eduels0.erase(eduels0.begin()+r0);
-	}
-//	for(; i < (u * 10) && eduels0.size(); i++) {
-//		int rr = random() % nrounds;
-//		rounds[rr].step(cduels);
-//	    }
+	stepm(u*100, mov, i);
+	step0(u*10, i);
     }
     else if (mov >= max_duels) {
- 	for(int i = 0; i < (u*100); i++) {
- 	    int rr = random() % nrounds;
- 	    rounds[rr].step(cduels);
- 	}
+	int i = 0;
+	step(u*100, i);
     }
     else {
 	if (ov.count(0)) {
-	    std::vector<std::pair<int, int> > eduels0;
-	    for(std::map<std::pair<int, int>, int>::const_iterator I = cduels.begin(); I != cduels.end(); I++)
-		if (I->second == 0)
-		    eduels0.push_back(I->first);
 	    int i = 0;
-	    for(; i < (u * 10) && eduels0.size(); i++) {
-		int rr = random() % nrounds;
-		int r0 = random() % eduels0.size();
-		rounds[rr].step0(eduels0[r0].first, eduels0[r0].second, cduels);
-		eduels0.erase(eduels0.begin()+r0);
-	    }
-	    for(; i < (u * 10) && eduels0.size(); i++) {
-		int rr = random() % nrounds;
-		rounds[rr].step(cduels);
-	    }
+	    step0(u*10, i);
+	    stepm(u*10, mov, i);
  	}
 	else {
-	    std::vector<std::pair<int, int> > eduelsm;
-	    for(std::map<std::pair<int, int>, int>::const_iterator I = cduels.begin(); I != cduels.end(); I++)
-		if (I->second == mov)
-		    eduelsm.push_back(I->first);
 	    int i = 0;
-	    for(; i < (u * 10) && eduelsm.size(); i++) {
-		int rr = 0;
-		int r0 = 0;
-		do {
-		    rr = random() % nrounds;
-		    r0 = random() % eduelsm.size();
-		} while(!rounds[rr].stepm(eduelsm[r0].first, eduelsm[r0].second, cduels));
-		eduelsm.erase(eduelsm.begin()+r0);
-	    }
-	    for(; i < (u * 10); i++) {
-		int rr = random() % nrounds;
-		rounds[rr].step(cduels);
-	    }
+	    stepm(u*10, mov, i);
+	    step(u*10, i);
 	}
     }
 }
@@ -615,25 +676,29 @@ int main(int argc, char *argv[])
     if (argc < 5) {
 	std::cerr << "usage: f3ksa #pilots #rounds #method #pilots_in_group1 ?#pilots_in_group2? ..." << std::endl;
 	std::cerr << std::endl;
-	std::cerr << "  #pilots              Number of pilots in the contest" << std::endl;
-	std::cerr << "  #rounds              Number of rounds/tasks in the contest" << std::endl;
-	std::cerr << "  #method              Method used to draw the contest" << std::endl;
-	std::cerr << "    <integer>            Use built-in cost fucntion" << std::endl;
-	std::cerr << "    < 0                    Best of abs(specified number) of drawings" << std::endl;
-	std::cerr << "    0                      Worst case" << std::endl;
-	std::cerr << "    1                      Minimize number of duels with highest frequency" << std::endl;
-	std::cerr << "    > 1                    Minimize number of duels with highest frequency until" << std::endl;
-	std::cerr << "                           specified number is reached, then try to maximize that" << std::endl;
-	std::cerr << "                           number of duels while trying to avoid pilots not duelling" << std::endl;
-	std::cerr << "    m?<integer>?         Use mean absolute deviation" << std::endl;
-	std::cerr << "    no integer             Minimize the mean absolute deviation" << std::endl;
-	std::cerr << "    < 0                    Best of abs(specified number) of drawings" << std::endl;
-	std::cerr << "    > 0                    Minimize the mean absolute deviation with extra cost for" << std::endl;
-	std::cerr << "                           duels with frequency 0 and with frequency >= specified" << std::endl;
-	std::cerr << "                           integer" << std::endl;
-	std::cerr << "  #pilots_in_group1    Number of pilots in first group" << std::endl;
-	std::cerr << "  ?#pilots_in_group2?  Number of pilots in second group" << std::endl;
-	std::cerr << "  ...                  ..." << std::endl;
+	std::cerr << "  #pilots                Number of pilots in the contest" << std::endl;
+	std::cerr << "  #rounds                Number of rounds/tasks in the contest" << std::endl;
+	std::cerr << "  #method                Method used to draw the contest" << std::endl;
+	std::cerr << "    <integer>              Use built-in cost fucntion" << std::endl;
+	std::cerr << "    < 0                      Best of abs(specified number) of drawings" << std::endl;
+	std::cerr << "    0                        Worst case" << std::endl;
+	std::cerr << "    1                        Minimize number of duels with highest frequency" << std::endl;
+	std::cerr << "    > 1                      Minimize number of duels with highest frequency until" << std::endl;
+	std::cerr << "                             specified number is reached, then try to maximize that" << std::endl;
+	std::cerr << "                             number of duels while trying to avoid pilots not duelling" << std::endl;
+	std::cerr << "    m?<integer>?           Use mean absolute deviation" << std::endl;
+	std::cerr << "    no integer               Minimize the mean absolute deviation" << std::endl;
+	std::cerr << "    < 0                      Best of abs(specified number) of drawings" << std::endl;
+	std::cerr << "    > 0                      Minimize the mean absolute deviation with extra cost for" << std::endl;
+	std::cerr << "                             duels with frequency 0 and with frequency >= specified" << std::endl;
+	std::cerr << "                             integer" << std::endl;
+	std::cerr << "  #pilots_in_group1      Number of pilots in first group" << std::endl;
+	std::cerr << "  ?#pilots_in_group2?    Number of pilots in second group" << std::endl;
+	std::cerr << "  ...                    ..." << std::endl;
+	std::cerr << "  ?c<integer>,<integer>? Conflicting pilots" << std::endl;
+	std::cerr << "  ..." << std::endl;
+	std::cerr << "  ?t<double>?            Minimum temperature when using simulated annealing (< 0.008)" << std::endl;
+	std::cerr << "  ?o<path>?              Output file, default is 'f3k.txt', use 'data' to add to 'data' directory" << std::endl;
 	return 1;
     }
 
@@ -664,12 +729,33 @@ int main(int argc, char *argv[])
 
     std::vector<int> groups;
     int tpilots = 0;
+    std::vector<std::pair<int, int> > conflicts;
+    double t_min = T_MIN;
+    std::string rpath;
     for(int i = 4; i < argc; i++) {
-	int t = 0;
-	std::istringstream is3(argv[i]);
-	is3 >> t;
-	groups.push_back(t);
-	tpilots += t;
+	if (argv[i][0] == 'c') {
+	    std::istringstream is3(&argv[i][1]);
+	    int p1 = -1;
+	    int p2 = -1;
+	    char c = 0;
+	    is3 >> p1 >> c >> p2;
+	    conflicts.push_back(std::make_pair(p1, p2));
+	}
+	else if (argv[i][0] == 't') {
+	    std::istringstream is3(&argv[i][1]);
+	    is3 >> t_min;
+	}
+	else if (argv[i][0] == 'o') {
+	    std::istringstream is3(&argv[i][1]);
+	    is3 >> rpath;	    
+	}
+	else {
+	    int t = 0;
+	    std::istringstream is3(argv[i]);
+	    is3 >> t;
+	    groups.push_back(t);
+	    tpilots += t;
+	}
     }
 
     if (pilots != tpilots) {
@@ -680,7 +766,17 @@ int main(int argc, char *argv[])
     Contest contest(pilots, rounds, max_duels);
     for(std::vector<int>::const_iterator I = groups.begin(); I != groups.end(); I++)
 	contest.add_group_npilots(*I);
-
+    for(std::vector<std::pair<int, int> >::const_iterator I = conflicts.begin(); I != conflicts.end(); I++) {
+	if (I->first < 0 || I->first >= tpilots) {
+	    std::cerr << "Invalid pilots in conflict: " << I->first << std::endl;
+	    return 0;
+	}
+	if (I->second < 0 || I->second >= tpilots) {
+	    std::cerr << "Invalid pilots in conflict: " << I->second << std::endl;
+	    return 0;
+	}
+	contest.add_conflict(*I);
+    }
     if (max_duels == 0) {
 	contest.worst_case();
     }
@@ -713,7 +809,8 @@ int main(int argc, char *argv[])
      
 	    T = gsl_rng_default;
 	    r = gsl_rng_alloc(T);
-     
+
+	    params.t_min = t_min;
 	    gsl_siman_solve(r, &contest, E1, S1, M1, P1, C1, CC1, D1, 
 			    sizeof(double), params);
     
@@ -721,7 +818,7 @@ int main(int argc, char *argv[])
 	}
     }
     
-    contest.report();
+    contest.report(rpath);
 
     return 0;
 }
