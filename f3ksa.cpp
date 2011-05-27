@@ -306,6 +306,7 @@ void Contest::report(std::string rpath)
 	if (ov.count(i))
 	    os << " " << i << ":" << ov[i];
     os << "\n";
+    os << "cost " << cost() << "\n";
     os << "mean_absolute_deviation " << mad(ov) << "\n";
     os << "matrix  -";
     for(int p = 0; p < npilots; p++)
