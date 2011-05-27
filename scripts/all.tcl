@@ -54,7 +54,6 @@ set incremental 0
 set generate_html 0
 set generate_duel_matrix 0
 set generate_xml 0
-set parallel 1
 
 foreach a $argv {
     switch -glob -- $a {
@@ -78,9 +77,6 @@ foreach a $argv {
 	-x* {
 	    set generate_xml 1
 	}
-        4 {
-	    set parallel 4
-	}
     }
 }
 
@@ -99,7 +95,8 @@ set methods {
     4        4siman        "Maximized frequency of 4 duels and minimized frequency of 0 duels using simulated annealing" "Max4"
     5        5siman        "Maximized frequency of 5 duels and minimized frequency of 0 duels using simulated annealing" "Max5"
     m        siman_mad     "Minimized mean absolute deviation"                                                           "MAD"
-    m4       4siman_mad    "Minimized mean absolute deviation with extra cost for duels with frequency 0 and 4"          "MAD4"
+    m4       4siman_mad    "Minimized mean absolute deviation with extra cost for 0 duels and >= 4 duels"                "MAD4"
+    m5       5siman_mad    "Minimized mean absolute deviation with extra cost for 0 duels and >= 5 duels"                "MAD5"
 }
 
 proc mad {c} {
@@ -110,6 +107,9 @@ proc mad {c} {
 	incr tm $i
 	incr md [expr {$i * $n}]
 	incr n
+    }
+    if {$tm == 0} {
+	return 10e20
     }
     set wad [expr {double($md)/$tm}]
     set n 0
@@ -407,20 +407,32 @@ if {$generate_html} {
 		set fnm "f3k_${p}p_${r}r_[join $gl _]"
 		unset -nocomplain dm
 		set cost [list]
+		set madcost [list]
 		set ndl [collect_duel_frequencies $fnm $methods dm]
 		foreach {marg mti mtl mtlabb} $methods {
 		    set c [cost dm $mti]
+		    set L {}
+		    foreach nd $ndl {
+			if {[info exists dm($mti,$nd)]} {
+			    lappend L $dm($mti,$nd)
+			} else {
+			    lappend L 0
+			}
+		    }		
 		    lappend cost [list $mti $c]
 		    set dcost($fnm,$mti) $c
-		    set scost($fnm,$mti) $c
+		    set m [mad $L]
+		    lappend madcost [list $mti $m]
+		    set maddcost($fnm,$mti) $m
 		}
 		set cost [lsort -increasing -index 1 -real $cost]
+		set madcost [lsort -increasing -index 1 -real $madcost]
 		foreach {marg mti mtl mtlabb} $methods {
 		    incr ntot
 		    set fnm "f3k_${p}p_${r}r_[join $gl _]_$mti.txt"
 		    if {[file exists ../data/$fnm]} {
 			incr nfound
-			lappend al "<a href='p${p}.html#g[join $gl -]r${r}'>$mtlabb ([lsearch -index 0 $cost $mti])</a>"
+			lappend al "<a href='p${p}.html#g[join $gl -]r${r}'>$mtlabb ([lsearch -index 0 $cost $mti]/[lsearch -index 0 $madcost $mti])</a>"
 		    } else {
 			lappend al "$mtlabb"
 		    }
@@ -458,24 +470,26 @@ if {$generate_html} {
 		set ndl [collect_duel_frequencies $fnm $methods dm]
 		puts $h "<table border='1'><caption>Duel frequencies overview</caption>"
 		puts -nonewline $h "<tr><th></th>"
-		foreach nd $ndl {
+		for {set nd 0} {$nd <= [lindex $ndl end]} {incr nd} {
 		    puts -nonewline $h "<th class='w3'>$nd</th>"
 		}
 		puts $h "<th>Cost</th><th>Mean deviation</th></tr>"
 		foreach {marg mti mtl mtlabb} $methods {
 		    puts -nonewline $h "<tr><td><a href='#idg[join $gl -]r${r}$mti'>$mtl</a></td>"
-		    set L {}
-		    foreach nd $ndl {
+		    for {set nd 0} {$nd <= [lindex $ndl end]} {incr nd} {
 			if {[info exists dm($mti,$nd)]} {
 			    puts -nonewline $h "<td class='w3'>$dm($mti,$nd)</td>"
-			    lappend L $dm($mti,$nd)
 			} else {
 			    puts -nonewline $h "<td class='w3'>-</td>"
-			    lappend L 0
 			}
 		    }		
 		    if {[info exists dcost($fnm,$mti)]} {
-			puts $h "<td>$dcost($fnm,$mti)</td><td>[mad $L] ($L)</td></tr>"
+			puts $h "<td>$dcost($fnm,$mti)</td>"
+		    } else {
+			puts $h "<td>-</td></tr>"
+		    }
+		    if {[info exists maddcost($fnm,$mti)]} {
+			puts $h "<td>$maddcost($fnm,$mti)</td>"
 		    } else {
 			puts $h "<td>-</td></tr>"
 		    }
@@ -491,8 +505,8 @@ if {$generate_html} {
     }
 
     puts "Processed $nfound of $ntot ([format %5.1f [expr {$nfound * 100.0 / $ntot}]]%), HTML written to directory ../html"
-
-    foreach {k v} [array get scost] {
+    puts "Lowest cost:"
+    foreach {k v} [array get dcost] {
 	lassign [split $k ,] fnm mti
 	lappend lcost($fnm) [list $mti $v]
     }
@@ -507,8 +521,27 @@ if {$generate_html} {
     set cl [lsort -index 1 -integer -decreasing $cl]
     foreach c $cl {
 	lassign $c m n
-	puts [format "%12s %5d %6.2f%%" $m $n [expr {double($n)/[llength [array names lcost]]*100}]]
+	puts [format "%15s %5d %6.2f%%" $m $n [expr {double($n)/[llength [array names lcost]]*100}]]
     }
+    puts "Lowest mean absolute deviation:"
+    foreach {k v} [array get maddcost] {
+	lassign [split $k ,] fnm mti
+	lappend lmadcost($fnm) [list $mti $v]
+    }
+    foreach {k v} [array get lmadcost] {
+	set lmadcost($k) [lsort -real -increasing -index 1 $v]
+	incr mmadcost([lindex $lmadcost($k) 0 0])
+    }
+    set madcl {}
+    foreach {k v} [array get mmadcost] {
+	lappend madcl [list $k $v]
+    }
+    set madcl [lsort -index 1 -integer -decreasing $madcl]
+    foreach c $madcl {
+	lassign $c m n
+	puts [format "%15s %5d %6.2f%%" $m $n [expr {double($n)/[llength [array names lcost]]*100}]]
+    }
+    
 }
 
 if {$generate_xml} {
@@ -568,7 +601,72 @@ if {$generate_xml} {
     puts $x "</f3k>"
     close $x
 
-    puts "Processed $nfound of $ntot ([format %5.1f [expr {$nfound * 100.0 / $ntot}]]%), XML written to directory ../html"
+    puts "Processed $nfound of $ntot ([format %5.1f [expr {$nfound * 100.0 / $ntot}]]%), XML written to directory ../html/f3k.xml"
+
+    set ntot 0
+    set nfound 0
+
+    set x [open ../html/f3kmad.xml w]
+    puts $x "<?xml version=\"1.0\"?>"
+    puts $x "<!--"
+    puts $x $::license
+    puts $x "-->"
+    puts $x "<f3k version=\"1.0\">"
+    for {set p $mp} {$p <= $Mp} {incr p} {
+	for {set r $mr} {$r <= $Mr} {incr r} {
+	    foreach gl [groups $p] {
+		# Only best result in the XML
+		set fnm "f3k_${p}p_${r}r_[join $gl _]"
+		unset -nocomplain dm
+		set cost [list]
+		set ndl [collect_duel_frequencies $fnm $methods dm]
+		foreach {marg mti mtl mtlabb} $methods {
+		    set L {}
+		    foreach nd $ndl {
+			if {[info exists dm($mti,$nd)]} {
+			    lappend L $dm($mti,$nd)
+			} else {
+			    lappend L 0
+			}
+		    }		
+		    lappend cost [list $mti [mad $L]]
+		}
+		set cost [lsort -increasing -real -index 1 $cost]
+		set mti [lindex $cost 0 0]
+		incr ntot
+		set fnm "f3k_${p}p_${r}r_[join $gl _]_${mti}.txt"
+		puts $x " <contest pilots=\"$p\" rounds=\"$r\" groups=\"[llength $gl]\" method=\"$mti\" filenam=\"$fnm\">"
+		if {[file exists ../data/$fnm]} {
+		    incr nfound
+		    set f [open ../data/$fnm r]
+		    set ll [split [read $f] \n]
+		    close $f
+		    foreach l $ll {
+			switch -exact -- [lindex $l 0] {
+			    round { 
+				puts $x "  <round id=\"[lindex $l 1]\">"
+				set rgid 0
+				foreach rg [lindex $l 2] {
+				    puts -nonewline $x "   <group id=\"$rgid\">"
+				    foreach rgp $rg {
+					puts -nonewline $x "<p>$rgp</p>"
+				    }
+				    puts $x "</group>"
+				    incr rgid
+				}
+				puts $x "  </round>"
+			    }
+			}
+		    }
+		}
+		puts $x " </contest>"
+	    }
+	}
+    }
+    puts $x "</f3k>"
+    close $x
+
+    puts "Processed $nfound of $ntot ([format %5.1f [expr {$nfound * 100.0 / $ntot}]]%), XML written to directory ../html/f3kmad.xml"
 }
 
 if {$generate_script} {
@@ -577,32 +675,32 @@ if {$generate_script} {
     set nmiss 0
     set fnml {}
 
-    set fl {}
-    for {set i 0} {$i < $parallel} {incr i} {
-	set fnm all$i.sh
-	set f [open $fnm w]
-	puts $f "#/bin/sh"
-	lappend fl $f
-	lappend fnml $fnm
-    }
+    set mk [open Makefile w]
+    set ml {}
     for {set p $mp} {$p <= $Mp} {incr p} {
 	for {set r $mr} {$r <= $Mr} {incr r} {
 	    foreach gl [groups $p] {
 		if {$p != [expr [join $gl +]]} {
 		    error "$p != [join $gl +]"
 		}
-		set fnm "../data/f3k_${p}p_${r}r_[join $gl _]"
+		set fnm "f3k_${p}p_${r}r_[join $gl _]"
 		foreach {marg mti mtl mtlabb} $methods {
 		    incr ntot
-		    if {!$incremental || ![file exists "${fnm}_$mti.txt"]} {
+		    if {!$incremental || ![file exists "../data/${fnm}_$mti.txt"]} {
 			incr nmiss
-			puts [lindex $fl [expr {$nmiss%$parallel}]] "./f3ksa $p $r $marg [join $gl]"
+			puts $mk "data/${fnm}_$mti.txt:"
+			puts $mk "\t./f3ksa $p $r $marg [join $gl]"
+			lappend ml "data/${fnm}_$mti.txt"
 		    }
 		}
 	    }
 	}
     }
-    close $f
+    puts -nonewline $mk "all:"
+    foreach tgt $ml {
+	puts -nonewline $mk " $tgt"
+    }
+    close $mk
 
-    puts "Missing $nmiss of $ntot ([format %5.1f [expr {$nmiss * 100.0 / $ntot}]]%), commands written to '[join $fnml "', '"]'"
+    puts "Missing $nmiss of $ntot ([format %5.1f [expr {$nmiss * 100.0 / $ntot}]]%), commands written to 'Makefile'"
 }
