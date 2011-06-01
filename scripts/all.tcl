@@ -250,7 +250,7 @@ proc htmlheader {h pilots} {
 	puts $h "Starting from the group data as listed here, you can generate a random contests by applying a random mapping from your pilots list to the numbers used in the group data and by randomizing the group order for a given round. This makes it possible to store the group data found here in a F3K contest application without having to repeat the calculations."
 	puts $h "</p>"
 	puts $h "<p>"
-	puts $h "An XML file with the results is available as a <a href='f3k.xml.zip'>zippped file</a>. The XML only contains the simulated annealing results as they are always better than the random results."
+	puts $h "The results are available as zipped XML files. One for best results using a <a href='f3k.xml.zip'>cost function to minimize the number of duels</a> and another file for best results when trying to minimize the <a href='f3kmad.xml.zip'>mean absolute deviation<a>."
 	puts $h "</p>"
 	puts $h "<p>"
 	puts $h "For questions and feedback about the data and the method used to obtain this data, you can contact me at <a href=\"mailto:jos.decoster@gmail.com\">jos.decoster@gmail.com</a>."
@@ -605,6 +605,8 @@ if {$generate_xml} {
 
     set ntot 0
     set nfound 0
+    set mmad ""
+    set mfnm ""
 
     set x [open ../html/f3kmad.xml w]
     puts $x "<?xml version=\"1.0\"?>"
@@ -628,8 +630,13 @@ if {$generate_xml} {
 			} else {
 			    lappend L 0
 			}
-		    }		
-		    lappend cost [list $mti [mad $L]]
+		    }	
+		    set mad [mad $L]
+		    lappend cost [list $mti $mad]
+		    if {$mti ne "worstcase" && [llength $gl] > 1 && $mad < 0.4} {
+			lappend mmad $mad
+			lappend mfnm [list $fnm $mti]
+		    }
 		}
 		set cost [lsort -increasing -real -index 1 $cost]
 		set mti [lindex $cost 0 0]
@@ -667,6 +674,9 @@ if {$generate_xml} {
     close $x
 
     puts "Processed $nfound of $ntot ([format %5.1f [expr {$nfound * 100.0 / $ntot}]]%), XML written to directory ../html/f3kmad.xml"
+    foreach mad $mmad fnm $mfnm {
+	puts "$fnm $mad"
+    }
 }
 
 if {$generate_script} {
