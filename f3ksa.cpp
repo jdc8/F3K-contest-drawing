@@ -677,29 +677,31 @@ int main(int argc, char *argv[])
     if (argc < 5) {
 	std::cerr << "usage: f3ksa #pilots #rounds #method #pilots_in_group1 ?#pilots_in_group2? ..." << std::endl;
 	std::cerr << std::endl;
-	std::cerr << "  #pilots                Number of pilots in the contest" << std::endl;
-	std::cerr << "  #rounds                Number of rounds/tasks in the contest" << std::endl;
-	std::cerr << "  #method                Method used to draw the contest" << std::endl;
-	std::cerr << "    <integer>              Use built-in cost fucntion" << std::endl;
-	std::cerr << "    < 0                      Best of abs(specified number) of drawings" << std::endl;
-	std::cerr << "    0                        Worst case" << std::endl;
-	std::cerr << "    1                        Minimize number of duels with highest frequency" << std::endl;
-	std::cerr << "    > 1                      Minimize number of duels with highest frequency until" << std::endl;
-	std::cerr << "                             specified number is reached, then try to maximize that" << std::endl;
-	std::cerr << "                             number of duels while trying to avoid pilots not duelling" << std::endl;
-	std::cerr << "    m?<integer>?           Use mean absolute deviation" << std::endl;
-	std::cerr << "    no integer               Minimize the mean absolute deviation" << std::endl;
-	std::cerr << "    < 0                      Best of abs(specified number) of drawings" << std::endl;
-	std::cerr << "    > 0                      Minimize the mean absolute deviation with extra cost for" << std::endl;
-	std::cerr << "                             duels with frequency 0 and with frequency >= specified" << std::endl;
-	std::cerr << "                             integer" << std::endl;
-	std::cerr << "  #pilots_in_group1      Number of pilots in first group" << std::endl;
-	std::cerr << "  ?#pilots_in_group2?    Number of pilots in second group" << std::endl;
-	std::cerr << "  ...                    ..." << std::endl;
-	std::cerr << "  ?c<integer>,<integer>? Conflicting pilots" << std::endl;
+	std::cerr << "  #pilots                    Number of pilots in the contest" << std::endl;
+	std::cerr << "  #rounds                    Number of rounds/tasks in the contest" << std::endl;
+	std::cerr << "  #method                    Method used to draw the contest" << std::endl;
+	std::cerr << "    <integer>                  Use built-in cost fucntion" << std::endl;
+	std::cerr << "    < 0                          Best of abs(specified number) of drawings" << std::endl;
+	std::cerr << "    0                            Worst case" << std::endl;
+	std::cerr << "    1                            Minimize number of duels with highest frequency" << std::endl;
+	std::cerr << "    > 1                          Minimize number of duels with highest frequency until" << std::endl;
+	std::cerr << "                                 specified number is reached, then try to maximize that" << std::endl;
+	std::cerr << "                                 number of duels while trying to avoid pilots not duelling" << std::endl;
+	std::cerr << "    m?<integer>?               Use mean absolute deviation" << std::endl;
+	std::cerr << "    no integer                   Minimize the mean absolute deviation" << std::endl;
+	std::cerr << "    < 0                          Best of abs(specified number) of drawings" << std::endl;
+	std::cerr << "    > 0                          Minimize the mean absolute deviation with extra cost for" << std::endl;
+	std::cerr << "                                 duels with frequency 0 and with frequency >= specified" << std::endl;
+	std::cerr << "                                 integer" << std::endl;
+	std::cerr << "  #pilots_in_group1          Number of pilots in first group" << std::endl;
+	std::cerr << "  ?#pilots_in_group2?        Number of pilots in second group" << std::endl;
+	std::cerr << "  ...                        ..." << std::endl;
+	std::cerr << "  ?c<integer>,<integer>?     Conflicting pilots" << std::endl;
 	std::cerr << "  ..." << std::endl;
-	std::cerr << "  ?t<double>?            Minimum temperature when using simulated annealing (< 0.008)" << std::endl;
-	std::cerr << "  ?o<path>?              Output file, default is 'f3k.txt', use 'data' to add to 'data' directory" << std::endl;
+	std::cerr << "  ?T<integer>,<integer>,...? Team pilots" << std::endl;
+	std::cerr << "  ..." << std::endl;
+	std::cerr << "  ?t<double>?                Minimum temperature when using simulated annealing (< 0.008)" << std::endl;
+	std::cerr << "  ?o<path>?                  Output file, default is 'f3k.txt', use 'data' to add to 'data' directory" << std::endl;
 	return 1;
     }
 
@@ -731,6 +733,7 @@ int main(int argc, char *argv[])
     std::vector<int> groups;
     int tpilots = 0;
     std::vector<std::pair<int, int> > conflicts;
+    std::vector<std::vector<int> > teams;
     double t_min = T_MIN;
     std::string rpath;
     for(int i = 4; i < argc; i++) {
@@ -741,6 +744,19 @@ int main(int argc, char *argv[])
 	    char c = 0;
 	    is3 >> p1 >> c >> p2;
 	    conflicts.push_back(std::make_pair(p1, p2));
+	}
+	else if (argv[i][0] == 'T') {
+	    std::istringstream is3(&argv[i][1]);
+	    std::vector<int> team;
+	    while(is3) {
+		int m;
+		char c;
+		is3 >> m;
+		if (is3)
+		    team.push_back(m);
+		is3 >> c;
+	    }
+	    teams.push_back(team);
 	}
 	else if (argv[i][0] == 't') {
 	    std::istringstream is3(&argv[i][1]);
@@ -769,14 +785,37 @@ int main(int argc, char *argv[])
 	contest.add_group_npilots(*I);
     for(std::vector<std::pair<int, int> >::const_iterator I = conflicts.begin(); I != conflicts.end(); I++) {
 	if (I->first < 0 || I->first >= tpilots) {
-	    std::cerr << "Invalid pilots in conflict: " << I->first << std::endl;
+	    std::cerr << "Invalid pilot in conflict: " << I->first << std::endl;
 	    return 0;
 	}
 	if (I->second < 0 || I->second >= tpilots) {
-	    std::cerr << "Invalid pilots in conflict: " << I->second << std::endl;
+	    std::cerr << "Invalid pilot in conflict: " << I->second << std::endl;
 	    return 0;
 	}
 	contest.add_conflict(*I);
+    }
+    std::set<int> in_team;
+    for(std::vector<std::vector<int> >::const_iterator I = teams.begin(); I != teams.end(); I++) {
+	if (I->size() > groups.size()) {
+	    std::cerr << "Insufficient groups (" << groups.size() << ") for team with " << I->size() << " members" << std::endl;
+	    return 0;
+	}
+	for(std::vector<int>::const_iterator J = I->begin(); J != I->end(); J++) {
+	    if (*J < 0 || *J >= tpilots) {
+		std::cerr << "Invalid pilot in team: " << *J << std::endl;
+		return 0;
+	    }
+    	    if (in_team.count(*J)) {
+		std::cerr << "Invalid pilot in multiple teams: " << *J << std::endl;
+		return 0;
+	    }
+   	    in_team.insert(*J);		
+ 	    std::vector<int>::const_iterator L = J;
+ 	    L++;
+ 	    for(; L != I->end(); L++) {
+ 		contest.add_conflict(std::make_pair(*J, *L));
+ 	    }
+	}
     }
     if (max_duels == 0) {
 	contest.worst_case();

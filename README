@@ -71,17 +71,19 @@ Run the tool as follows:
 
   f3ksa #pilots #rounds #method #pilots_in_group1 ?#pilots_in_group2? ...
 
-    #pilots                Number of pilots in the contest
-    #rounds                Number of rounds/tasks in the contest
-    #method                Method used to draw the contest, see below
-    #pilots_in_group1      Number of pilots in first group
-    ?#pilots_in_group2?    Number of pilots in second group
-    ...                    ...
-    ?c<integer>,<integer>? Conflicting pilots
+    #pilots                    Number of pilots in the contest
+    #rounds                    Number of rounds/tasks in the contest
+    #method                    Method used to draw the contest, see below
+    #pilots_in_group1          Number of pilots in first group
+    ?#pilots_in_group2?        Number of pilots in second group
+    ...                        ...
+    ?c<integer>,<integer>?     Conflicting pilots
     ...
-    ?t<double>?            Minimum temperature when using simulated annealing (< 0.008)
-    ?o<path>?              Output file, default is 'f3k.txt', use 'data' to add
-                           to 'data' directory
+    ?T<integer>,<integer>,...? Team pilots
+    ...
+    ?t<double>?                Minimum temperature when using simulated annealing (< 0.008)
+    ?o<path>?                  Output file, default is 'f3k.txt', use 'data' to add
+                               to 'data' directory with formatted name.
 
 Know drawing methods, specified as integer:
 
