@@ -1,7 +1,6 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <gsl/gsl_siman.h>
 #include <vector>
 #include <iostream>
 #include <fstream>
@@ -10,31 +9,6 @@
 #include <map>
 #include <cmath>
 #include <set>
-
-/* set up parameters for this simulated annealing run */
-     
-/* how many points do we try before stepping */
-#define N_TRIES 200             
-
-/* how many iterations for each T? */
-#define ITERS_FIXED_T 1000
-
-/* max step size in random walk */
-#define STEP_SIZE 100.0            
-
-/* Boltzmann constant */
-#define K 1.0                   
-
-/* initial temperature */
-#define T_INITIAL 0.008         
-
-/* damping factor for temperature */
-#define MU_T 1.003              
-#define T_MIN 1.0e-5
-//#define T_MIN 2.0e-6
-
-gsl_siman_params_t params = {N_TRIES, ITERS_FIXED_T, STEP_SIZE,
-			     K, T_INITIAL, MU_T, T_MIN};
 
 int use_mad = 0;
 const int max_conflicted_step_tries = 1000;
@@ -621,58 +595,127 @@ void Contest::step(double u, double step_size)
     }
 }
 
-double E1(void *xp)
-{
-    return ((Contest*)xp)->cost();
-}
-     
-double M1(void *xp, void *yp)
-{
-    double x = ((Contest *) xp)->cost();
-    double y = ((Contest *) yp)->cost();
+class SimulatedAnnealing {
+public:
     
-    return fabs(x - y);
-}
-     
-void S1(const gsl_rng * r, void *xp, double step_size)
+    int ITERS_FIXED_T; // number of iterations for each T
+    double STEP_SIZE; // max step size in random walk
+    double K;  // Boltzmann constant
+    double T_INITIAL; // initial temperature
+    double MU_T;  // damping factor for temperature
+    double T_MIN; // minimum temperature
+
+    virtual double energy(void* xp) = 0;
+    virtual void step(double u, void* xp, double step_size) = 0;
+    virtual void print(void *xp) = 0;
+    virtual void copy(void *source, void *dest) = 0; 
+    virtual void* new_copy(void *xp) = 0;
+    virtual void destroy(void *xp) = 0;
+
+    void* anneal(void*);
+
+    SimulatedAnnealing() : ITERS_FIXED_T(1000), STEP_SIZE(100.0), K(1.0), T_INITIAL(0.008),
+			   MU_T(1.003), T_MIN(1.0e-5) {}
+
+private:
+    double boltzmann(double E, double new_E, double T) {
+	double x = -(new_E - E) / (K * T);
+	return exp(x);
+    }
+
+    double drandom() {
+	return double(random()) / double(RAND_MAX);
+    }
+};
+
+void* SimulatedAnnealing::anneal(void* x0)
 {
-    double u = gsl_rng_uniform(r);
-    ((Contest *) xp)->step(u, step_size);
+    void* x = new_copy(x0);
+    void* new_x = new_copy(x0);
+    void* best_x = new_copy(x0);
+
+    double E = energy(x0);
+    double best_E = E;
+
+    double T = T_INITIAL;
+    double T_factor = 1.0 / MU_T;
+
+    while (T > T_MIN) {
+	for(int i = 0; i < ITERS_FIXED_T; i++) {
+	    copy(x, new_x);
+	    step(drandom(), new_x, STEP_SIZE);
+	    double new_E = energy(new_x);
+	    if (new_E < best_E) {
+		copy(new_x, best_x);
+		best_E = new_E;
+	    }
+	    if (new_E < E) {
+		if (new_E < best_E) {
+		    copy(new_x, best_x);
+		    best_E = new_E;
+		}
+		copy(new_x, x);
+		E = new_E;
+	    }
+	    else if (drandom() < boltzmann(E, new_E, T)) {
+		copy(new_x, x);
+		E = new_E;
+	    }
+	}
+
+	std::cout << std::fixed << std::setw(13) << std::setprecision(8) << T
+		  << "  " << std::setw(13) << E
+		  << "  " << std::setw(13) << best_E
+		  << "  ";
+	print(x);
+	std::cout << "\n";
+		
+	T *= T_factor;
+    }
+
+    copy(best_x, x0);
+    destroy(x);
+    destroy(new_x);
+    destroy(best_x);
 }
 
-void P1(void *xp)
-{
-    Contest* c = (Contest*)xp;
-    std::map<int, int> ov;
-    int mov = c->sum_duel_occurences(c->cduels, ov);
-    std::cout << "#";
-    for(int i = 0; i <= mov; i++)
-	if (ov.count(i))
-	    std::cout << "," << i << ":" << ov[i];
-    std::cout << "%" << c->mad(ov);
-//    std::cout << "\n" << *c << std::endl;
-}
+class F3KSA : public SimulatedAnnealing {
+public:
+    double energy(void *xp) {
+	return ((Contest*)xp)->cost();
+    }
+    void step(double u, void *xp, double step_size) {
+	((Contest *) xp)->step(u, step_size);
+    }
+    void print(void *xp) {
+	Contest* c = (Contest*)xp;
+	std::map<int, int> ov;
+	int mov = c->sum_duel_occurences(c->cduels, ov);
+	std::cout << " " << std::fixed << std::setw(13) << c->mad(ov);
+	for(int i = 0; i <= mov; i++)
+	    if (ov.count(i))
+		std::cout << " " << i << ":" << ov[i];
+    }
+    void copy(void *source, void *dest) {
+	*((Contest*) dest) = *((Contest*) source);
+    }
+    void* new_copy(void *xp) {
+	Contest* c = new Contest();
+	*c = *((Contest*) xp);
+	return c;
+    }
+    void destroy(void *xp) {
+	delete ((Contest*) xp);
+    }
 
-void C1(void *source, void *dest)
-{
-    *((Contest*) dest) = *((Contest*) source);
-}
-
-void* CC1(void *xp)
-{
-    Contest* c = new Contest();
-    *c = *((Contest*) xp);
-    return c;
-}
-
-void D1(void *xp)
-{
-    delete ((Contest*) xp);
-}
+    F3KSA() {}
+};  
 
 int main(int argc, char *argv[])
 {
     srandom(getpid());
+
+    F3KSA f3ksa;
 
     if (argc < 5) {
 	std::cerr << "usage: f3ksa #pilots #rounds #method #pilots_in_group1 ?#pilots_in_group2? ..." << std::endl;
@@ -700,7 +743,7 @@ int main(int argc, char *argv[])
 	std::cerr << "  ..." << std::endl;
 	std::cerr << "  ?T<integer>,<integer>,...? Team pilots" << std::endl;
 	std::cerr << "  ..." << std::endl;
-	std::cerr << "  ?t<double>?                Minimum temperature when using simulated annealing (< 0.008)" << std::endl;
+	std::cerr << "  ?t<double>?                Minimum temperature when using simulated annealing (< " << f3ksa.T_MIN << ")" << std::endl;
 	std::cerr << "  ?o<path>?                  Output file, default is 'f3k.txt', use 'data' to add to 'data' directory" << std::endl;
 	return 1;
     }
@@ -734,7 +777,6 @@ int main(int argc, char *argv[])
     int tpilots = 0;
     std::vector<std::pair<int, int> > conflicts;
     std::vector<std::vector<int> > teams;
-    double t_min = T_MIN;
     std::string rpath;
     for(int i = 4; i < argc; i++) {
 	if (argv[i][0] == 'c') {
@@ -760,7 +802,7 @@ int main(int argc, char *argv[])
 	}
 	else if (argv[i][0] == 't') {
 	    std::istringstream is3(&argv[i][1]);
-	    is3 >> t_min;
+	    is3 >> f3ksa.T_MIN;
 	}
 	else if (argv[i][0] == 'o') {
 	    std::istringstream is3(&argv[i][1]);
@@ -817,6 +859,7 @@ int main(int argc, char *argv[])
  	    }
 	}
     }
+
     if (max_duels == 0) {
 	contest.worst_case();
     }
@@ -825,7 +868,7 @@ int main(int argc, char *argv[])
 	if (groups.size() > 1) {
 	    double cost = contest.cost();
 	    Contest ccontest = contest;
-	    std::cout << max_duels; P1(&contest); std::cout << std::endl;
+	    std::cout << max_duels << " " << cost << std::endl;
 	    max_duels++;
 	    while(max_duels < 0) {
 		ccontest.draw();
@@ -833,7 +876,7 @@ int main(int argc, char *argv[])
 		if (ccost < cost) {
 		    contest = ccontest;
 		    cost = ccost;
-		    std::cout << max_duels; P1(&contest); std::cout << std::endl;
+		    std::cout << max_duels << " " << cost << std::endl;
 		}
 		max_duels++;
 	    }
@@ -841,21 +884,8 @@ int main(int argc, char *argv[])
     }
     else {
 	contest.draw();
-	if (groups.size() > 1) {
-	    const gsl_rng_type * T;
-	    gsl_rng * r;
-     
-	    gsl_rng_env_setup();
-     
-	    T = gsl_rng_default;
-	    r = gsl_rng_alloc(T);
-
-	    params.t_min = t_min;
-	    gsl_siman_solve(r, &contest, E1, S1, M1, P1, C1, CC1, D1, 
-			    sizeof(double), params);
-    
-	    gsl_rng_free (r);
-	}
+	if (groups.size() > 1)
+	    f3ksa.anneal(&contest);
     }
     
     contest.report(rpath);
