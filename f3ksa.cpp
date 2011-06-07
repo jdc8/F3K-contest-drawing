@@ -10,6 +10,10 @@
 #include <cmath>
 #include <set>
 
+#ifdef _WIN32
+#include "process.h"
+#endif
+
 int use_mad = 0;
 const int max_conflicted_step_tries = 1000;
 
@@ -157,7 +161,7 @@ double Contest::cost() const
 	    if (max_duels != 1000000 && ov.count(0))
 		cost += ov[0] * 0.002;
 	    for(int i = max_duels; i <= mov; i++)
-		cost += ov[i] * 0.002 * std::pow(10,i-max_duels);
+		cost += ov[i] * 0.002 * std::pow(double(10),i-max_duels);
 	}
     }
     else {
@@ -612,7 +616,7 @@ public:
     virtual void* new_copy(void *xp) = 0;
     virtual void destroy(void *xp) = 0;
 
-    void* anneal(void*);
+    void anneal(void*);
 
     SimulatedAnnealing() : ITERS_FIXED_T(1000), STEP_SIZE(100.0), K(1.0), T_INITIAL(0.008),
 			   MU_T(1.003), T_MIN(1.0e-5) {}
@@ -628,7 +632,7 @@ private:
     }
 };
 
-void* SimulatedAnnealing::anneal(void* x0)
+void SimulatedAnnealing::anneal(void* x0)
 {
     void* x = new_copy(x0);
     void* new_x = new_copy(x0);
@@ -713,7 +717,11 @@ public:
 
 int main(int argc, char *argv[])
 {
-    srandom(getpid());
+#ifdef _WIN32
+    srand(_getpid());
+#else    
+    srand(getpid());
+#endif
 
     F3KSA f3ksa;
 
