@@ -77,7 +77,12 @@ struct Contest {
 	conflicts[c.second].insert(c.first);
 	conflicts_list.push_back(c);
     }
-    int conflicting(int a, int b) const { return conflicts.count(a) && conflicts.at(a).count(b); }
+    int conflicting(int a, int b) const {
+	std::map<int, std::set<int> >::const_iterator I = conflicts.find(a);
+	if (I == conflicts.end())
+	    return 0;
+	return I->second.count(b);
+    }
     Contest() {}
     Contest(int inpilots, int inrounds, int imax_duels) : npilots(inpilots), nrounds(inrounds), max_duels(imax_duels) {
 	init_duels();
@@ -297,7 +302,7 @@ void Contest::report(std::string rpath)
 	    if (p == q)
 		os << "  -";
 	    else if (cduels.count(k))
-		os << " " << std::setw(2) << cduels.at(k);
+		os << " " << std::setw(2) << cduels[k];
 	    else
 		os << "  0";
 	}
