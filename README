@@ -40,6 +40,10 @@ constraints:
 - Two pilots should be in the same group as few times as possible
 - Two pilots should be in the same group at least once
 
+or by minimising the mean absolute deviation (MAD) of the draw. The MAD is
+calculated as used by Gerry Carter in his GliderScore program and is a measure
+for the distribution of the duels in the draw.
+
 Different methods are used:
 
 - Choosing best of a number of random draw
@@ -58,7 +62,13 @@ Building the tool:
 
     git clone git://github.com/jdc8/F3K-contest-drawing.git
 
-- Run 'make'
+- On Linux, use the following command:
+
+    make
+
+- On Windows, use the following command:
+
+    nmake /f Makefile.vc
 
 Running the tool:
 -----------------
@@ -73,7 +83,7 @@ Run the tool as follows:
     #pilots_in_group1          Number of pilots in first group
     ?#pilots_in_group2?        Number of pilots in second group
     ...                        ...
-    ?c<integer>,<integer>?     Conflicting pilots
+    ?c<integer>,<integer>?     Conflicting pilots (e.g. frequency conflict)
     ...
     ?T<integer>,<integer>,...? Team pilots
     ...
@@ -99,7 +109,7 @@ Know drawing methods, specified as integer:
 
 Methods > 0 use simulated annealing.
 
-Results are written in the data subdirectory in a file with name:
+When results are written in the data subdirectory the file name is created as follows:
 
    f3k_<#pilots>p_<#rounds>r_<#pilots in group 1>?_<#pilots in group 2>...?_<method>.txt
 
@@ -109,7 +119,7 @@ Results are written in the data subdirectory in a file with name:
    0       worstcase
    > 0     <#method>siman
 
-When using the mean absolute deviation, _mad is added to the <method> part.
+When using the mean absolute deviation, _mad is appended to the <method> part.
 
 Example:
 
