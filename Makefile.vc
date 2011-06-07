@@ -1,0 +1,5 @@
+f3ksa.exe: f3ksa.cpp
+	cl f3ksa.cpp
+
+clean:
+	del /F /Q f3ksa.exe
