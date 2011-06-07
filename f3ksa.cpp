@@ -1,6 +1,6 @@
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <vector>
 #include <iostream>
 #include <fstream>
@@ -157,7 +157,7 @@ double Contest::cost() const
 	    if (max_duels != 1000000 && ov.count(0))
 		cost += ov[0] * 0.002;
 	    for(int i = max_duels; i <= mov; i++)
-		cost += ov[i] * 0.002 * pow(10,i-max_duels);
+		cost += ov[i] * 0.002 * std::pow(10,i-max_duels);
 	}
     }
     else {
@@ -333,7 +333,7 @@ int Group::draw(const Contest* contest, const Round* round, int npilots, std::ma
     int curr_draw = 0;
     pilots.clear();
     do {
-	int p = random() % contest->npilots;
+	int p = rand() % contest->npilots;
 	if (!round->in_round(p) && !this->in_group(p) && !conflicting(contest, p)) {
 	    for(std::vector<int>::const_iterator I = pilots.begin(); I != pilots.end(); I++)
 		cduels[mangle(p, *I)]++;
@@ -433,15 +433,15 @@ inline void Round::add_duels(int p, int g, std::map<std::pair<int, int>, int>& c
 int Round::step(const Contest* contest, std::map<std::pair<int, int>, int>& cduels)
 {
     // Swap 2 pilots from different groups
-    int rg0 = random() % groups.size();
+    int rg0 = rand() % groups.size();
     int rg1 = rg0;
     if (groups.size() > 1) {
 	do {
-	    rg1 = random() % groups.size();
+	    rg1 = rand() % groups.size();
 	} while (rg0 == rg1);
     }
-    int rp0 = random() % groups[rg0].pilots.size();
-    int rp1 = random() % groups[rg1].pilots.size();
+    int rp0 = rand() % groups[rg0].pilots.size();
+    int rp1 = rand() % groups[rg1].pilots.size();
     int p = groups[rg0].pilots[rp0];
     int q = groups[rg1].pilots[rp1];
     if (groups[rg0].conflicting(contest, q, p))
@@ -468,7 +468,7 @@ int Round::step0(const Contest* contest, int p, int q, std::map<std::pair<int, i
     get_group_and_index(q, qg, qi);
     int r = 0;
     do {
-	r = random() % groups[pg].pilots.size();
+	r = rand() % groups[pg].pilots.size();
     } while (r == pi);
     int rtmp = groups[pg].pilots[r];
     int qtmp = groups[qg].pilots[qi];
@@ -490,7 +490,7 @@ int Round::stepm(const Contest* contest, int p, int q, std::map<std::pair<int, i
     // When pilots p and q are in same group, swap pilots p with pilot from other group
     int pg = 0;
     int pi = 0;
-    get_group_and_index(random() % 2 ? p : q, pg, pi);
+    get_group_and_index(rand() % 2 ? p : q, pg, pi);
     int qg = 0;
     int qi = 0;
     get_group_and_index(q, qg, qi);
@@ -498,10 +498,10 @@ int Round::stepm(const Contest* contest, int p, int q, std::map<std::pair<int, i
 	return 0;
     int rg = 0;
     do {
-	rg = random() % groups.size();
+	rg = rand() % groups.size();
     } while (rg == pg);
     
-    int ri = random() % groups[rg].pilots.size();
+    int ri = rand() % groups[rg].pilots.size();
     int ptmp = groups[pg].pilots[pi];
     int rtmp = groups[rg].pilots[ri];
     if (groups[pg].conflicting(contest, rtmp, ptmp))
@@ -527,8 +527,8 @@ void Contest::stepm(double u, int mov, int& i)
 	int curr_try = 0;
 	int stepped = 0;
 	do {
-	    int rr = random() % nrounds;
-	    int r0 = random() % eduelsm.size();
+	    int rr = rand() % nrounds;
+	    int r0 = rand() % eduelsm.size();
 	    curr_try++;
 	    if (stepped = rounds[rr].stepm(this, eduelsm[r0].first, eduelsm[r0].second, cduels))
 		eduelsm.erase(eduelsm.begin()+r0);
@@ -546,8 +546,8 @@ void Contest::step0(double u, int& i)
 	int curr_try = 0;
 	int stepped = 0;
 	do {
-	    int rr = random() % nrounds;
-	    int r0 = random() % eduels0.size();
+	    int rr = rand() % nrounds;
+	    int r0 = rand() % eduels0.size();
 	    curr_try++;
 	    if (stepped = rounds[rr].step0(this, eduels0[r0].first, eduels0[r0].second, cduels))
 		eduels0.erase(eduels0.begin()+r0);
@@ -561,7 +561,7 @@ void Contest::step(double u, int& i)
 	int stepped = 0;
 	int curr_try = 0;
 	do {
-	    int rr = random() % nrounds;
+	    int rr = rand() % nrounds;
 	    curr_try++;
 	    stepped = rounds[rr].step(this, cduels);
 	} while(!stepped && curr_try < max_conflicted_step_tries);
@@ -624,7 +624,7 @@ private:
     }
 
     double drandom() {
-	return double(random()) / double(RAND_MAX);
+	return double(rand()) / double(RAND_MAX);
     }
 };
 
