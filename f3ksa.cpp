@@ -736,7 +736,7 @@ int main(int argc, char *argv[])
 	std::cerr << "  #pilots                    Number of pilots in the contest" << std::endl;
 	std::cerr << "  #rounds                    Number of rounds/tasks in the contest" << std::endl;
 	std::cerr << "  #method                    Method used to draw the contest" << std::endl;
-	std::cerr << "    <integer>                  Use built-in cost fucntion" << std::endl;
+	std::cerr << "    f<integer>                 Use built-in cost fucntion" << std::endl;
 	std::cerr << "    < 0                          Best of abs(specified number) of drawings" << std::endl;
 	std::cerr << "    0                            Worst case" << std::endl;
 	std::cerr << "    1                            Minimize number of duels with highest frequency" << std::endl;
@@ -781,9 +781,13 @@ int main(int argc, char *argv[])
 	else
 	    max_duels = 1000000;
     }
-    else {
-	std::istringstream is3(argv[3]);
+    else if (argv[3][0] == 'f') {
+	std::istringstream is3(&argv[3][1]);
 	is3 >> max_duels;
+    }
+    else {
+	std::cerr << "Unknown method: " << argv[3] << std::endl;
+	return 1;
     }
 
     std::vector<int> groups;

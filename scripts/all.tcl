@@ -85,18 +85,18 @@ set Mp 50 ;# Maximum number of pilots
 set mr 5  ;# Minimum number of tasks
 set Mr 20 ;# Maximum number of tasks
 set methods {
-    0        worstcase     "Worst case"                                                                                  "Wrst"
-    -1       1random       "1 random draw"                                                                               "Rnd0"
-    -10      10random      "Best of 10 random draws"                                                                     "Rnd1"
-    -10000   10000random   "Best of 10000 random draws"                                                                  "Rnd4"
-    -1000000 1000000random "Best of 1000000 random draws"                                                                "Rnd6"
-    1        1siman        "Minimized frequency of maximum number of duels using simulated annealing"                    "Min"
-    3        3siman        "Maximized frequency of 3 duels and minimized frequency of 0 duels using simulated annealing" "Max3"
-    4        4siman        "Maximized frequency of 4 duels and minimized frequency of 0 duels using simulated annealing" "Max4"
-    5        5siman        "Maximized frequency of 5 duels and minimized frequency of 0 duels using simulated annealing" "Max5"
-    m        siman_mad     "Minimized mean absolute deviation"                                                           "MAD"
-    m4       4siman_mad    "Minimized mean absolute deviation with extra cost for 0 duels and >= 4 duels"                "MAD4"
-    m5       5siman_mad    "Minimized mean absolute deviation with extra cost for 0 duels and >= 5 duels"                "MAD5"
+    f0        worstcase     "Worst case"                                                                                  "Wrst"
+    f-1       1random       "1 random draw"                                                                               "Rnd0"
+    f-10      10random      "Best of 10 random draws"                                                                     "Rnd1"
+    f-10000   10000random   "Best of 10000 random draws"                                                                  "Rnd4"
+    f-1000000 1000000random "Best of 1000000 random draws"                                                                "Rnd6"
+    f1        1siman        "Minimized frequency of maximum number of duels using simulated annealing"                    "Min"
+    f3        3siman        "Maximized frequency of 3 duels and minimized frequency of 0 duels using simulated annealing" "Max3"
+    f4        4siman        "Maximized frequency of 4 duels and minimized frequency of 0 duels using simulated annealing" "Max4"
+    f5        5siman        "Maximized frequency of 5 duels and minimized frequency of 0 duels using simulated annealing" "Max5"
+    m         siman_mad     "Minimized mean absolute deviation"                                                           "MAD"
+    m4        4siman_mad    "Minimized mean absolute deviation with extra cost for 0 duels and >= 4 duels"                "MAD4"
+    m5        5siman_mad    "Minimized mean absolute deviation with extra cost for 0 duels and >= 5 duels"                "MAD5"
 }
 
 proc mad {c} {

@@ -93,7 +93,7 @@ Run the tool as follows:
 
 Know drawing methods, specified as integer:
 
-    <integer>     Use built-in cost fucntion
+    f<integer>    Use built-in cost fucntion
     < 0             Best of abs(specified number) of drawings
     0               Worst case
     1               Minimize number of duels with highest frequency
