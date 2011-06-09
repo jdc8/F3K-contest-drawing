@@ -15,6 +15,8 @@
 #endif
 
 int use_mad = 0;
+int tcl_output = 0;
+
 const int max_conflicted_step_tries = 1000;
 
 inline std::pair<int,int> mangle(int p, int q)
@@ -250,7 +252,8 @@ void Contest::report(std::string rpath)
 	fos << ".txt";
 	rpath = fos.str();
     }
-    std::cout << "Writing results to file '" << rpath << "'" << std::endl;
+    if (!tcl_output)
+	std::cout << "Writing results to file '" << rpath << "'" << std::endl;
     std::ofstream os(rpath.c_str());
     os << "pilots " << npilots << "\n";
     os << "rounds " << nrounds << "\n";
@@ -672,12 +675,13 @@ void SimulatedAnnealing::anneal(void* x0)
 	    }
 	}
 
-	std::cout << std::fixed << std::setw(13) << std::setprecision(8) << T
-		  << "  " << std::setw(13) << E
-		  << "  " << std::setw(13) << best_E
-		  << "  ";
+	if(!tcl_output)
+	    std::cout << std::fixed << std::setw(13) << std::setprecision(8) << T
+		      << "  " << std::setw(13) << E
+		      << "  " << std::setw(13) << best_E
+		      << "  ";
 	print(x);
-	std::cout << "\n";
+	std::cout << std::endl;
 		
 	T *= T_factor;
     }
@@ -700,10 +704,29 @@ public:
 	Contest* c = (Contest*)xp;
 	std::map<int, int> ov;
 	int mov = c->sum_duel_occurences(c->cduels, ov);
-	std::cout << " " << std::fixed << std::setw(13) << c->mad(ov);
-	for(int i = 0; i <= mov; i++)
-	    if (ov.count(i))
-		std::cout << " " << i << ":" << ov[i];
+	std::cout << std::fixed << std::setw(13) << c->cost()
+		  << " " << std::fixed << std::setw(13) << c->mad(ov);
+	if (tcl_output) {
+	    std::cout << " {";
+	    int n = 0;
+	    for(int i = 0; i <= mov; i++) {
+		if (ov.count(i)) {
+		    if (n)
+			std::cout << " ";
+		    std::cout << i << " " << ov[i];
+		}
+		n++;
+	    }
+	    std::cout << "} {";
+	    for(std::vector<Round>::const_iterator I = c->rounds.begin(); I != c->rounds.end(); I++)
+		std::cout << " {" << *I << "}";
+	    std::cout << "}";
+	}
+	else {
+	    for(int i = 0; i <= mov; i++)
+		if (ov.count(i))
+		    std::cout << " " << i << ":" << ov[i];
+	}
     }
     void copy(void *source, void *dest) {
 	*((Contest*) dest) = *((Contest*) source);
@@ -825,6 +848,9 @@ int main(int argc, char *argv[])
 	    std::istringstream is3(&argv[i][1]);
 	    is3 >> rpath;	    
 	}
+	else if (argv[i][0] == 'k') {
+	    tcl_output = 1;
+	}
 	else {
 	    int t = 0;
 	    std::istringstream is3(argv[i]);
@@ -885,7 +911,8 @@ int main(int argc, char *argv[])
 	if (groups.size() > 1) {
 	    double cost = contest.cost();
 	    Contest ccontest = contest;
-	    std::cout << max_duels << " " << cost << std::endl;
+	    f3ksa.print(&contest);
+	    std::cout << std::endl;
 	    max_duels++;
 	    while(max_duels < 0) {
 		ccontest.draw();
@@ -893,7 +920,8 @@ int main(int argc, char *argv[])
 		if (ccost < cost) {
 		    contest = ccontest;
 		    cost = ccost;
-		    std::cout << max_duels << " " << cost << std::endl;
+		    f3ksa.print(&contest);
+		    std::cout << std::endl;
 		}
 		max_duels++;
 	    }
@@ -904,7 +932,7 @@ int main(int argc, char *argv[])
 	if (groups.size() > 1)
 	    f3ksa.anneal(&contest);
     }
-    
+
     contest.report(rpath);
 
     return 0;
