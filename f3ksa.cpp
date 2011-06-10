@@ -64,8 +64,8 @@ struct Contest {
     void worst_case();
     void add_group_npilots(int i) { group_npilots.push_back(i); }
     void duels(std::map<std::pair<int, int>, int>& eduels) const;
-    int sum_duel_occurences(const std::map<std::pair<int, int>, int>& eduels,
-			    std::map<int, int>& ov) const;
+    void sum_duel_occurences(const std::map<std::pair<int, int>, int>& eduels,
+			     std::map<int, int>& ov, int& mov, int& Mov) const;
     double mad(const std::map<int, int>&) const;
     double cost() const;
     void step(double u, double step_size);
@@ -122,21 +122,23 @@ void Contest::duels(std::map<std::pair<int, int>, int>& eduels) const
 	I->duels(eduels);
 }
 
-int Contest::sum_duel_occurences(const std::map<std::pair<int, int>, int>& eduels,
-				 std::map<int, int>& ov) const
+void Contest::sum_duel_occurences(const std::map<std::pair<int, int>, int>& eduels,
+				  std::map<int, int>& ov, int& mov, int& Mov) const
 {
-    int mov = 0;
+    mov = -1;
+    Mov = -1;
     for(std::map<std::pair<int, int>, int>::const_iterator I = eduels.begin(); I != eduels.end(); I++) {
 	if (I->first.first != I->first.second) {
 	    if (ov.count(I->second))
 		ov[I->second]++;
 	    else
 		ov[I->second] = 1;
-	    if (I->second > mov)
+	    if (mov == -1 || I->second < mov)
 		mov = I->second;
+	    if (Mov == -1 || I->second > Mov)
+		Mov = I->second;
 	}
     }
-    return mov;
 }
 
 double Contest::mad(const std::map<int, int>& ov) const
@@ -158,7 +160,8 @@ double Contest::mad(const std::map<int, int>& ov) const
 double Contest::cost() const 
 {
     std::map<int, int> ov;
-    int mov = sum_duel_occurences(cduels, ov);
+    int mov, Mov;
+    sum_duel_occurences(cduels, ov, mov, Mov);
     double cost = 0;
 
     if (use_mad) {
@@ -167,18 +170,18 @@ double Contest::cost() const
 	if (max_duels >= 0) {
 	    if (max_duels != 1000000 && ov.count(0))
 		cost += ov[0] * 0.002;
-	    for(int i = max_duels; i <= mov; i++)
+	    for(int i = max_duels; i <= Mov; i++)
 		cost += ov[i] * 0.002 * std::pow(double(10),i-max_duels);
 	}
     }
     else {
-//     cost = cost + mov * 10e9; // don't like many duels
-//     cost = cost - ov[mov]; // like many occurences of max number of duels
+//     cost = cost + Mov * 10e9; // don't like many duels
+//     cost = cost - ov[Mov]; // like many occurences of max number of duels
 //     if (ov.count(0))
 //  	cost = cost + ov[0] * 1000; // don't like pilots not dueling
 
-	cost = cost + mov * 10e9; // don't like many duels
-	if (mov <= max_duels) {
+	cost = cost + Mov * 10e9; // don't like many duels
+	if (Mov <= max_duels) {
 	    if (ov.count(0))
 		cost += ov[0] * 10000000; // Try again with 10e6
 	    for(int i = 1; i <= max_duels; i++)
@@ -186,9 +189,9 @@ double Contest::cost() const
 		    cost -= ov[i] * (i == 2 ? 20000 : 1000);
 	}
 	else
-	    cost += ov[mov] * 10000000; // Try again with 10e6
+	    cost += ov[Mov] * 10000000; // Try again with 10e6
 
-//    for(int i = 0; i <= mov; i++)
+//    for(int i = 0; i <= Mov; i++)
 // 	if (ov.count(i))
 // 	    cost += ov[i] * pow(10, 3*i);
     }
@@ -286,9 +289,10 @@ void Contest::report(std::string rpath)
 	os << "round " << r++ << " {" << *I << "}\n";
     std::map<std::pair<int, int>, int> eduels;
     std::map<int, int> ov;
-    int mov = sum_duel_occurences(cduels, ov);
+    int mov, Mov;
+    sum_duel_occurences(cduels, ov, mov, Mov);
     os << "duel_frequencies";
-    for(int i = 0; i <= mov; i++)
+    for(int i = 0; i <= Mov; i++)
 	if (ov.count(i))
 	    os << " " << i << ":" << ov[i];
     os << "\n";
@@ -502,7 +506,7 @@ int Round::stepm(const Contest* contest, int p, int q, std::map<std::pair<int, i
     // When pilots p and q are in same group, swap pilots p with pilot from other group
     int pg = 0;
     int pi = 0;
-    get_group_and_index(rand() % 2 ? p : q, pg, pi);
+    get_group_and_index(p, pg, pi);
     int qg = 0;
     int qi = 0;
     get_group_and_index(q, qg, qi);
@@ -583,13 +587,17 @@ void Contest::step(double u, int& i)
 void Contest::step(double u, double step_size)
 {
     std::map<int, int> ov;
-    int mov = sum_duel_occurences(cduels, ov);
+    int mov, Mov;
+    sum_duel_occurences(cduels, ov, mov, Mov);
     if (use_mad) {
+	int curr_try = 0;
 	int i = 0;
-	stepm(u*100, mov, i);
-	step0(u*10, i);
+	step0(1+u*100, i);
+	stepm(1+u*100, Mov, i);
+	stepm(1+u*100, mov, i);
+	step(1+u*10, i);
     }
-    else if (mov >= max_duels) {
+    else if (Mov >= max_duels) {
 	int i = 0;
 	step(u*100, i);
     }
@@ -597,11 +605,11 @@ void Contest::step(double u, double step_size)
 	if (ov.count(0)) {
 	    int i = 0;
 	    step0(u*10, i);
-	    stepm(u*10, mov, i);
+	    stepm(u*10, Mov, i);
  	}
 	else {
 	    int i = 0;
-	    stepm(u*10, mov, i);
+	    stepm(u*10, Mov, i);
 	    step(u*10, i);
 	}
     }
@@ -703,13 +711,14 @@ public:
     void print(void *xp) {
 	Contest* c = (Contest*)xp;
 	std::map<int, int> ov;
-	int mov = c->sum_duel_occurences(c->cduels, ov);
+	int mov, Mov;
+	c->sum_duel_occurences(c->cduels, ov, mov, Mov);
 	std::cout << std::fixed << std::setw(13) << c->cost()
 		  << " " << std::fixed << std::setw(13) << c->mad(ov);
 	if (tcl_output) {
 	    std::cout << " {";
 	    int n = 0;
-	    for(int i = 0; i <= mov; i++) {
+	    for(int i = 0; i <= Mov; i++) {
 		if (ov.count(i)) {
 		    if (n)
 			std::cout << " ";
@@ -723,7 +732,7 @@ public:
 	    std::cout << "}";
 	}
 	else {
-	    for(int i = 0; i <= mov; i++)
+	    for(int i = 0; i <= Mov; i++)
 		if (ov.count(i))
 		    std::cout << " " << i << ":" << ov[i];
 	}
@@ -905,6 +914,8 @@ int main(int argc, char *argv[])
 
     if (max_duels == 0) {
 	contest.worst_case();
+	f3ksa.print(&contest);
+	std::cout << std::endl;
     }
     else if (max_duels < 0) {
 	contest.draw();
