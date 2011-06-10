@@ -20,10 +20,17 @@ proc title {} {
     $text configure -state disabled
 }
 
+proc rstate {state} {
+    global rpaths
+    foreach p $rpaths {
+	$p configure -state $state
+    }
+}
+
 proc run {} {
     global tpath npilots ngroups nrounds cost optmeth fconf teams fdescr text gtext cntr cvs mcvs mparam rb sb
-    $rb configure -state disabled
     $sb configure -state normal
+    rstate disabled
     set cmd [list $tpath $npilots $nrounds]
     set cntr 0
     switch -exact -- $cost {
@@ -54,6 +61,7 @@ proc run {} {
 	    lappend cmd $div
 	}
     }
+    lappend cmd t10e-20
     $text configure -state normal
     $text delete 1.0 end
     $text insert end "Running command '$cmd'\n"
@@ -128,6 +136,9 @@ proc onoutput {} {
 	    $text insert end [format {%13.8f %f} $cmad $ccost] ""
 	    $text insert end \n ""
 	    $text configure -state disabled
+	    $gtext configure -state normal
+	    $gtext insert end $rl\n
+	    $gtext configure -state disabled
 	    if {$follow} {
 		$cvs delete bars
 		set y 0
@@ -139,10 +150,6 @@ proc onoutput {} {
 		    incr y 20
 		}
 		$cvs configure -scrollregion [$cvs bbox bars]
-		$gtext configure -state normal
-		$gtext delete 1.0 end
-		$gtext insert end [join $rl \n]
-		$gtext configure -state disabled
 		unset -nocomplain dm
 		set M 0
 		foreach r $rl {
@@ -163,32 +170,41 @@ proc onoutput {} {
 		$mcvs delete dfreq
 		set r 1
 		set c 1
+		unset -nocomplain fm
 		for {set p 0} {$p < $npilots} {incr p} {
 		    set r 1
 		    for {set q 0} {$q < $npilots} {incr q} {
 			if {$p != $q} {
 			    if {[info exists dm($p,$q)]} {
+				incr fm($dm($p,$q))
 				if {$dm($p,$q) == $M} {
-				    $mcvs create text [expr {5+$c*30+15}] [expr {5+$r*30+15}] -text $dm($p,$q) -tags {matrix dfreq} -fill red
+				    $mcvs create text [expr {5+$c*30+15}] [expr {5+$r*30+15}] -text $dm($p,$q) -tags [list matrix dfreq f$dm($p,$q)] -fill red
 				} else {
-				    $mcvs create text [expr {5+$c*30+15}] [expr {5+$r*30+15}] -text $dm($p,$q) -tags {matrix dfreq}
+				    $mcvs create text [expr {5+$c*30+15}] [expr {5+$r*30+15}] -text $dm($p,$q) -tags [list matrix dfreq f$dm($p,$q)]
 				}
 			    } else {
-				$mcvs create text [expr {5+$c*30+15}] [expr {5+$r*30+15}] -text 0 -tags {matrix dfreq} -fill orange
+				$mcvs create text [expr {5+$c*30+15}] [expr {5+$r*30+15}] -text 0 -tags [list matrix dfreq f0] -fill orange
 			    }
 			}
 			incr r
 		    }
 		    incr c
 		}
+		set fl {}
+		foreach {k v} [array get fm] {
+		    lappend fl [list $k $v]
+		}
+		set fl [lsort -integer -index 1 $fl]
+		lassign [lindex $fl end] k v
+		$mcvs itemconfigure f$k -fill green 
 	    }
 	}
     }
     if {$follow} {
 	$text see end
+	$gtext see end
     }
     if {[eof $fdescr]} {
-	puts ""
         fconfigure $fdescr -blocking 1
         if [catch {close $fdescr}] {
             set s [lindex $::errorCode 0]
@@ -206,7 +222,7 @@ proc onoutput {} {
 	$text insert end "\nDone."
 	$text configure -state disabled
 	$sb configure -state disabled
-	$rb configure -state normal
+	rstate normal
     }
 }
 
@@ -216,8 +232,10 @@ proc stop {} {
 	close $fdescr
     }
     $sb configure -state disabled
-    $rb configure -state normal
+    rstate normal
 }
+
+set rpaths {}
 
 set sf [ttk::frame .settings]
 pack $sf -fill x
@@ -225,14 +243,17 @@ pack $sf -fill x
 set npilots 20
 set npl [ttk::label $sf.npl -text "Number of pilots:" -justify left]
 set npe [ttk::entry $sf.npe -textvariable npilots -justify right]
+lappend rpaths $npe
 
 set ngroups 2
 set ngl [ttk::label $sf.ngl -text "Number of groups:" -justify left]
 set nge [ttk::entry $sf.ngo -textvariable ngroups -justify right]
+lappend rpaths $nge
 
 set nrounds 7
 set nrl [ttk::label $sf.nrl -text "Number of rounds:" -justify left]
 set nre [ttk::entry $sf.nro -textvariable nrounds -justify right]
+lappend rpaths $nre
 
 set cost m
 set cl [ttk::label $sf.ml -text "Cost:" -justify left]
@@ -240,6 +261,7 @@ set crb {}
 foreach {p c} {wc "Worst case" f "Cost function" m "Mean absolute deviation"} {
     lappend crb [ttk::radiobutton $sf.crb$p -text $c -variable cost -value $p]
 }
+lappend rpaths {*}$crb
 
 set optmeth sa
 set oml [ttk::label $sf.oml -text "Optimization method:"]
@@ -247,18 +269,22 @@ set omrb {}
 foreach {p m} {rnd "Random" sa "Simulated annealing"} {
     lappend omrb [ttk::radiobutton $sf.omrb$p -text $m -variable optmeth -value $p] 
 }
+lappend rpaths {*}$omrb
 
-set mparam 0
+set mparam ""
 set mpl [ttk::label $sf.mpl -text "Method parameter:" -justify left]
 set mpe [ttk::entry $sf.mpo -textvariable mparam -justify right]
+lappend rpaths $mpe
 
 set fconf {}
 set fcl [ttk::label $sf.fcl -text "Frequency conflicts" -justify left]
 set fce [ttk::entry $sf.fco -textvariable fconf]
+lappend rpaths $fce
 
 set teams {}
 set tl [ttk::label $sf.tl -text "Teams" -justify left]
 set te [ttk::entry $sf.to -textvariable teams]
+lappend rpaths $te
 
 grid $npl $npe -sticky ewns
 grid $ngl $nge -sticky ewns
@@ -279,6 +305,7 @@ set rb [ttk::button $bf.rb -text "Run" -command run]
 set sb [ttk::button $bf.sb -text "Stop" -command stop -state disabled]
 set follow 1
 set fcb [ttk::checkbutton $bf.fcb -text "Follow output" -variable follow]
+lappend rpaths $rb
 
 grid $rb $sb $fcb -sticky ewns
 for {set r 0} {$r < 2} {incr r} {
