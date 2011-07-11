@@ -9,6 +9,7 @@
 #include <map>
 #include <cmath>
 #include <set>
+#include <algorithm>
 
 #ifdef _WIN32
 #include "process.h"
@@ -27,6 +28,31 @@ inline std::pair<int,int> mangle(int p, int q)
 struct Group;
 struct Round;
 struct Contest;
+
+#define MYRANDOM 0
+
+int grand(int n) 
+{
+#if MYRANDOM    
+    static int m_z = 12345;
+    static int m_w = 67890;
+    m_z = 36969 * (m_z & 65535) + (m_z >> 16);
+    m_w = 18000 * (m_w & 65535) + (m_w >> 16);
+    int r = ((m_z << 16) + m_w) % n;  /* 32-bit result */
+    return r < 0 ? -r : r;
+#else
+    return rand() % n;
+#endif    
+}
+
+double grand() 
+{
+#if MYRANDOM    
+    return (double)grand(65536) / 65536.0;
+#else
+    return double(rand()) / double(RAND_MAX);
+#endif    
+}
 
 struct Group {
     std::vector<int> pilots;
@@ -168,10 +194,13 @@ double Contest::cost() const
 	double m = mad(ov);
 	cost = m;
 	if (max_duels >= 0) {
-	    if (max_duels != 1000000 && ov.count(0))
+	    if (max_duels != 1000000 && ov.count(0)) {
 		cost += ov[0] * 0.002;
+	    }
 	    for(int i = max_duels; i <= Mov; i++)
-		cost += ov[i] * 0.002 * std::pow(double(10),i-max_duels);
+		if (ov.count(i)) {
+		    cost += ov[i] * 0.002 * std::pow(double(10),i-max_duels);
+		}
 	}
     }
     else {
@@ -349,7 +378,7 @@ int Group::draw(const Contest* contest, const Round* round, int npilots, std::ma
     int curr_draw = 0;
     pilots.clear();
     do {
-	int p = rand() % contest->npilots;
+	int p = grand(contest->npilots);
 	if (!round->in_round(p) && !this->in_group(p) && !conflicting(contest, p)) {
 	    for(std::vector<int>::const_iterator I = pilots.begin(); I != pilots.end(); I++)
 		cduels[mangle(p, *I)]++;
@@ -449,15 +478,15 @@ inline void Round::add_duels(int p, int g, std::map<std::pair<int, int>, int>& c
 int Round::step(const Contest* contest, std::map<std::pair<int, int>, int>& cduels)
 {
     // Swap 2 pilots from different groups
-    int rg0 = rand() % groups.size();
+    int rg0 = grand(groups.size());
     int rg1 = rg0;
     if (groups.size() > 1) {
 	do {
-	    rg1 = rand() % groups.size();
+	    rg1 = grand(groups.size());
 	} while (rg0 == rg1);
     }
-    int rp0 = rand() % groups[rg0].pilots.size();
-    int rp1 = rand() % groups[rg1].pilots.size();
+    int rp0 = grand(groups[rg0].pilots.size());
+    int rp1 = grand(groups[rg1].pilots.size());
     int p = groups[rg0].pilots[rp0];
     int q = groups[rg1].pilots[rp1];
     if (groups[rg0].conflicting(contest, q, p))
@@ -484,7 +513,7 @@ int Round::step0(const Contest* contest, int p, int q, std::map<std::pair<int, i
     get_group_and_index(q, qg, qi);
     int r = 0;
     do {
-	r = rand() % groups[pg].pilots.size();
+	r = grand(groups[pg].pilots.size());
     } while (r == pi);
     int rtmp = groups[pg].pilots[r];
     int qtmp = groups[qg].pilots[qi];
@@ -514,10 +543,9 @@ int Round::stepm(const Contest* contest, int p, int q, std::map<std::pair<int, i
 	return 0;
     int rg = 0;
     do {
-	rg = rand() % groups.size();
+	rg = grand(groups.size());
     } while (rg == pg);
-    
-    int ri = rand() % groups[rg].pilots.size();
+    int ri = grand(groups[rg].pilots.size());
     int ptmp = groups[pg].pilots[pi];
     int rtmp = groups[rg].pilots[ri];
     if (groups[pg].conflicting(contest, rtmp, ptmp))
@@ -533,21 +561,31 @@ int Round::stepm(const Contest* contest, int p, int q, std::map<std::pair<int, i
     return 1;
 }
 
+int mycompare(std::pair<int, int> a, std::pair<int, int> b) 
+{
+    if (a.first == b.first)
+	return a.second < b.second;
+    else
+	return a.first < b.first;
+}
+
 void Contest::stepm(double u, int mov, int& i) 
 {
     std::vector<std::pair<int, int> > eduelsm;
     for(std::map<std::pair<int, int>, int>::const_iterator I = cduels.begin(); I != cduels.end(); I++)
 	if (I->second == mov)
 	    eduelsm.push_back(I->first);
+    std::sort(eduelsm.begin(), eduelsm.end(), mycompare);
     for(; i < u && eduelsm.size(); i++) {
 	int curr_try = 0;
 	int stepped = 0;
 	do {
-	    int rr = rand() % nrounds;
-	    int r0 = rand() % eduelsm.size();
+	    int rr = grand(nrounds);
+	    int r0 = grand(eduelsm.size());
 	    curr_try++;
-	    if (stepped = rounds[rr].stepm(this, eduelsm[r0].first, eduelsm[r0].second, cduels))
+	    if (stepped = rounds[rr].stepm(this, eduelsm[r0].first, eduelsm[r0].second, cduels)) {
 		eduelsm.erase(eduelsm.begin()+r0);
+	    }
 	} while(!stepped && curr_try < max_conflicted_step_tries);
     }
 }
@@ -558,12 +596,13 @@ void Contest::step0(double u, int& i)
     for(std::map<std::pair<int, int>, int>::const_iterator I = cduels.begin(); I != cduels.end(); I++)
 	if (I->second == 0)
 	    eduels0.push_back(I->first);
+    std::sort(eduels0.begin(), eduels0.end(), mycompare);
     for(; i < u && eduels0.size(); i++) {
 	int curr_try = 0;
 	int stepped = 0;
 	do {
-	    int rr = rand() % nrounds;
-	    int r0 = rand() % eduels0.size();
+	    int rr = grand(nrounds);
+	    int r0 = grand(eduels0.size());
 	    curr_try++;
 	    if (stepped = rounds[rr].step0(this, eduels0[r0].first, eduels0[r0].second, cduels))
 		eduels0.erase(eduels0.begin()+r0);
@@ -577,7 +616,7 @@ void Contest::step(double u, int& i)
 	int stepped = 0;
 	int curr_try = 0;
 	do {
-	    int rr = rand() % nrounds;
+	    int rr = grand(nrounds);
 	    curr_try++;
 	    stepped = rounds[rr].step(this, cduels);
 	} while(!stepped && curr_try < max_conflicted_step_tries);
@@ -590,7 +629,6 @@ void Contest::step(double u, double step_size)
     int mov, Mov;
     sum_duel_occurences(cduels, ov, mov, Mov);
     if (use_mad) {
-	int curr_try = 0;
 	int i = 0;
 	step0(1+u*100, i);
 	stepm(1+u*100, Mov, i);
@@ -644,7 +682,7 @@ private:
     }
 
     double drandom() {
-	return double(rand()) / double(RAND_MAX);
+	return grand();
     }
 };
 
@@ -754,12 +792,13 @@ public:
 
 int main(int argc, char *argv[])
 {
-#ifdef _WIN32
+#if !MYRANDOM    
+# ifdef _WIN32
     srand(_getpid());
-#else    
+# else    
     srand(getpid());
+# endif
 #endif
-
     F3KSA f3ksa;
 
     if (argc < 5) {
@@ -916,6 +955,7 @@ int main(int argc, char *argv[])
 	contest.worst_case();
 	f3ksa.print(&contest);
 	std::cout << std::endl;
+	f3ksa.print(&contest);
     }
     else if (max_duels < 0) {
 	contest.draw();
